@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NorthScale
 
-## Getting Started
+Reporting and growth-intelligence platform: Google Ads, Meta Ads, Shopify and other revenue for many clients and many accounts per client, in **one database, one format**. Every screen and the AI read from the same tables.
 
-First, run the development server:
+> Status: **Phase 1 of 8** (base, layout, schema, metrics, demo data, Data page). See [Roadmap](#roadmap).
+
+## Quick start (local)
+
+Requirements: Node 22+, PostgreSQL 15+ (local or Supabase).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env            # set DATABASE_URL and ENCRYPTION_KEY (openssl rand -hex 32)
+npm install                     # also runs `prisma generate`
+npm run db:migrate              # tables + reporting views
+npm run db:seed                 # 2 demo clients, 180 days of Meta + Google + Shopify (+ other revenue)
+npm run dev                     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Script                                  | What it does                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `npm run dev` / `build` / `start`       | Next.js                                                                                |
+| `npm test`                              | Unit tests (Vitest): metrics, colour rule, periods, filters, crypto, creative verdicts |
+| `npm run e2e`                           | Playwright smoke tests over the demo data (starts `dev` if not running)                |
+| `npm run lint` / `typecheck` / `format` | ESLint, `tsc --noEmit`, Prettier                                                       |
+| `npm run db:migrate` / `db:migrate:dev` | Apply migrations (prod) / create new ones (dev)                                        |
+| `npm run db:seed`                       | (Re)generate demo data. Only touches `isDemo` clients.                                 |
+| `npm run db:refresh-views`              | Refresh the materialized reporting views                                               |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Architecture
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+Platform APIs ──► connectors (phase 3+) ──► normalized fact tables ──► reporting views ──► UI pages + AI tools
+                                              (one row per date × account × entity × breakdown)
+```
 
-## Learn More
+- **Tenancy**: `organizations → clients → connections` (one connection = one Meta ad account / Google Ads customer / Shopify store / other-revenue source). A client can have several of each.
+- **Facts** (all in the account's original currency, converted at read time):
+  - `ad_insights_daily` — date × connection × level (account/campaign/ad set/ad/keyword/search term) × entity × attribution window
+  - `ad_insights_breakdown` — same key + breakdown type/value (age, gender, placement, country, hour, device, audience type)
+  - `shopify_orders`, `shopify_order_lines`, `shopify_refunds` (refunds on the refund date), `other_revenue`
+  - dimensions: `ad_entities`, `creatives`; planning: `targets`, `chart_notes`, `cost_items`, `product_costs`
+- **Currency**: each client has a reporting currency; `fx_rates` stores daily rates and `fx_factor()` (SQL) converts using the latest rate on/before each day.
+- **Reporting views**: `mv_ad_daily`, `mv_shopify_daily`, `mv_other_revenue_daily` (materialized, refreshed after each sync), `v_client_daily` (blended: MER, aMER, nCAC inputs) and weekly/monthly/yearly rollups.
+- **Metrics**: `src/lib/metrics.ts` is the single definition of every metric — formula, format, direction (higher/lower is better/neutral), description. Tables, tooltips, colours, the Help glossary and the AI prompt all use it.
+- **Colour rule**: green when better, red when worse, grey when |Δ| < threshold (default ±2%, `org_settings.comparisonThresholdPct`) or the metric is neutral. `compareValues()` in `metrics.ts`, unit-tested.
+- **Global filters in the URL**: `client`, `accounts`, `preset|from|to`, `gran`, `cmp|cfrom|cto` (+ page params like `platform`, `tab`, `cvc`, `cvt`). Any view is a shareable link.
+- **Caching**: Next.js 16 Cache Components. Data functions use `"use cache"` + `cacheTag("client:<id>")`; sync jobs will call `revalidateTag` when they finish.
+- **Security**: platform tokens are encrypted with AES-256-GCM (`src/lib/crypto.ts`, key in `ENCRYPTION_KEY`); client-facing types never include token columns; NorthScale is **read-only** towards ad platforms.
+- **Permissions**: every query goes through `getCurrentUser()` / `accessibleClientIds()` (`src/server/auth.ts`). Phase 1 resolves to the seeded Owner; phase 8 plugs in Supabase Auth behind the same functions.
 
-To learn more about Next.js, take a look at the following resources:
+### Job queue choice: Inngest
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Chosen for phase 3 because it is the simplest to run with this stack: no Redis or worker server to host, functions live inside the Next.js app as a route handler (works on Vercel), and it gives retries with backoff, cron schedules, per-connection concurrency limits and throttling (useful for Meta/Google rate limits) out of the box. Local dev uses the Inngest dev server (`npx inngest-cli dev`). BullMQ would need a separate always-on worker + Redis; Trigger.dev is comparable but adds a second deploy target.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy (summary — expanded in phase 8)
 
-## Deploy on Vercel
+- **Vercel**: import the repo, set the env vars from `.env.example`. `DATABASE_URL` must be available at **build** time too (the app shell is prerendered and reads the client list).
+- **Supabase**: create a project, use the pooled connection string for `DATABASE_URL`, run `npm run db:migrate`.
+- **Inngest** (phase 3): connect the Vercel project; schedules are defined in code.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Platform credentials
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Step-by-step guides are added with each connector: Meta (phase 3), Google Ads developer token + OAuth + MCC (phase 4), Shopify custom app / OAuth (phase 5).
+
+## Roadmap
+
+1. ✅ Base: layout, schema, `metrics.ts`, demo seed, Data page, colour rule
+2. Dashboard, Chart Notes, Targets
+3. Meta connector (+ Sync Status / Sync Overview)
+4. Google Ads connector
+5. Shopify connector, Other Revenue, P&L, blended metrics
+6. Watchdog
+7. Hive-Mind + AI Insights
+8. Clients, Team Members, Client Viewers, Billing, Help, final README
+
+## Notes on versions
+
+- Next.js **16.4** (Cache Components + Partial Prefetching on), React 19.3, Tailwind 4.
+- Prisma pinned to **7.10.1** (npm's `latest` tag currently points at an 8.0 release candidate).
+- TanStack Table **v9** (`useTable` + explicit `tableFeatures`).
+- shadcn/ui components are vendored in `src/components/ui` (Radix primitives); Inter is self-hosted via `@fontsource-variable/inter`.

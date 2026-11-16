@@ -1,0 +1,672 @@
+// NorthScale — single normalized store for every platform, client and account.
+// Every screen and the AI read from these same tables (and the views built on them).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Platform {
+  META
+  GOOGLE
+  SHOPIFY
+  OTHER_REVENUE
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  ANALYST
+  CLIENT_VIEWER
+}
+
+enum ConnectionStatus {
+  OK
+  SYNCING
+  ERROR
+  TOKEN_EXPIRED
+  DISCONNECTED
+}
+
+enum EntityLevel {
+  ACCOUNT
+  CAMPAIGN
+  ADSET // Meta ad set / Google ad group
+  AD
+  KEYWORD
+  SEARCH_TERM
+}
+
+enum BreakdownType {
+  AGE
+  GENDER
+  PLACEMENT
+  COUNTRY
+  REGION
+  HOUR
+  DEVICE
+  AUDIENCE_TYPE
+}
+
+enum SyncJobStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum SyncJobKind {
+  BACKFILL
+  INCREMENTAL
+  RESYNC_RANGE
+  BREAKDOWNS
+  CREATIVES
+  WEBHOOK
+  RECONCILE
+}
+
+enum AlertSeverity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum AlertStatus {
+  OPEN
+  RESOLVED
+  MUTED
+}
+
+enum NoteCategory {
+  OFFER_LAUNCH
+  NEW_CREATIVE
+  BUDGET_CHANGE
+  PROMOTION
+  TRACKING_ISSUE
+  SITE_CHANGE
+  SEASONALITY
+  OTHER
+}
+
+enum CostType {
+  FIXED_MONTHLY
+  VARIABLE_PER_ORDER
+  VARIABLE_PCT_REVENUE
+}
+
+// ───────────────────────── Tenancy & access ─────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  clients     Client[]
+  memberships Membership[]
+  settings    OrgSetting?
+  @@map("organizations")
+}
+
+model OrgSetting {
+  organizationId         String       @id
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  demoData               Boolean      @default(true)
+  comparisonThresholdPct Float        @default(2) // ± % below which comparison is grey
+  plan                   String       @default("internal")
+  updatedAt              DateTime     @updatedAt
+  @@map("org_settings")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  image     String?
+  createdAt DateTime @default(now())
+
+  memberships   Membership[]
+  clientAccess  ClientAccess[]
+  preferences   UserPreference[]
+  conversations AiConversation[]
+  @@map("users")
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           Role
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+  @@map("memberships")
+}
+
+/// Which clients an ANALYST or CLIENT_VIEWER may see, and (viewers) which pages.
+model ClientAccess {
+  id           String   @id @default(cuid())
+  userId       String
+  clientId     String
+  allowedPages String[] @default([]) // empty = all pages allowed for the role
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+  @@map("client_access")
+}
+
+model ShareLink {
+  id           String    @id @default(cuid())
+  clientId     String
+  tokenHash    String    @unique
+  allowedPages String[]
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  client       Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  @@map("share_links")
+}
+
+model UserPreference {
+  id     String @id @default(cuid())
+  userId String
+  key    String // e.g. "data.columns.META.core", "dashboard.layout"
+  value  Json
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("user_preferences")
+}
+
+// ───────────────────────── Clients & connections ─────────────────────────
+
+model Client {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  slug              String       @unique
+  logoUrl           String?
+  currency          String       @default("USD") // reporting currency (ISO 4217)
+  timezone          String       @default("America/New_York") // reporting timezone
+  defaultMarginPct  Float        @default(60) // gross margin used when COGS is unknown
+  paymentFeePct     Float        @default(2.9)
+  shippingCostPerOrder Float     @default(0)
+  newAudienceMinPct Float        @default(60) // Audience Types: warn when New spend share is below
+  isDemo            Boolean      @default(false)
+  webhookKeyHash    String?      // generic Other Revenue webhook API key (hashed)
+  archivedAt        DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  connections   Connection[]
+  access        ClientAccess[]
+  shareLinks    ShareLink[]
+  targets       Target[]
+  notes         ChartNote[]
+  alerts        Alert[]
+  alertRules    AlertRule[]
+  costItems     CostItem[]
+  productCosts  ProductCost[]
+  insights      AiInsight[]
+  otherRevenue  OtherRevenue[]
+  @@map("clients")
+}
+
+model Connection {
+  id                String           @id @default(cuid())
+  clientId          String
+  client            Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform          Platform
+  externalId        String // act_123 / 123-456-7890 / shop.myshopify.com / source slug
+  name              String
+  currency          String
+  timezone          String
+  status            ConnectionStatus @default(OK)
+  /// AES-256-GCM ciphertext (iv:tag:data, base64). Never sent to the client.
+  encryptedToken    String?
+  encryptedRefresh  String?
+  tokenExpiresAt    DateTime?
+  loginCustomerId   String? // Google MCC
+  meta              Json? // platform specifics (attribution setting, MCC, scopes...)
+  lastSyncAt        DateTime?
+  lastSuccessAt     DateTime?
+  nextSyncAt        DateTime?
+  lastError         String?
+  backfillFrom      DateTime? @db.Date
+  backfillProgress  Float?    // 0..1
+  isDemo            Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  jobs SyncJob[]
+
+  @@unique([clientId, platform, externalId])
+  @@index([platform, status])
+  @@map("connections")
+}
+
+model FxRate {
+  date  DateTime @db.Date
+  base  String
+  quote String
+  rate  Float
+
+  @@id([date, base, quote])
+  @@map("fx_rates")
+}
+
+// ───────────────────────── Ad platform facts ─────────────────────────
+
+/// Dimension table for campaigns / ad sets / ads / keywords (one row per entity).
+model AdEntity {
+  id                 String      @id @default(cuid())
+  connectionId       String
+  clientId           String
+  platform           Platform
+  level              EntityLevel
+  externalId         String
+  name               String
+  campaignExternalId String?
+  adsetExternalId    String?
+  status             String?
+  effectiveStatus    String?
+  objective          String?
+  campaignType       String? // SEARCH, PERFORMANCE_MAX, SHOPPING, DEMAND_GEN, VIDEO, ADVANTAGE_PLUS...
+  isProspecting      Boolean?
+  reviewFeedback     String? // rejection reason (Watchdog)
+  landingUrl         String?
+  creativeId         String?
+  dailyBudget        Float?
+  updatedAt          DateTime    @updatedAt
+
+  @@unique([connectionId, level, externalId])
+  @@index([clientId, platform, level])
+  @@map("ad_entities")
+}
+
+model Creative {
+  id           String   @id @default(cuid())
+  connectionId String
+  clientId     String
+  platform     Platform
+  adExternalId String
+  externalId   String?
+  name         String
+  type         String // IMAGE | VIDEO | CAROUSEL | TEXT
+  thumbnailUrl String?
+  headline     String?
+  body         String?
+  landingUrl   String?
+  updatedAt    DateTime @updatedAt
+
+  @@unique([connectionId, adExternalId])
+  @@index([clientId])
+  @@map("creatives")
+}
+
+/// One row per date × connection × level × entity × attribution window.
+/// All money values are in the connection's original currency (`currency`).
+model AdInsightDaily {
+  id                 BigInt      @id @default(autoincrement())
+  clientId           String
+  connectionId       String
+  platform           Platform
+  date               DateTime    @db.Date
+  level              EntityLevel
+  entityId           String
+  entityName         String
+  campaignId         String?
+  campaignName       String?
+  adsetId            String?
+  adsetName          String?
+  adId               String?
+  attribution        String      @default("default") // default | 1d_click | 7d_click | incremental
+  currency           String
+
+  spend              Float       @default(0)
+  impressions        Int         @default(0)
+  reach              Int?
+  clicks             Int         @default(0) // all clicks
+  linkClicks         Int?
+  purchases          Float       @default(0) // "Conv."
+  purchaseValue      Float       @default(0) // "Ad Revenue"
+  addToCart          Float?
+  initiateCheckout   Float?
+  leads              Float?
+  completeRegistration Float?
+  viewContent        Float?
+  results            Float?
+  resultsValue       Float?
+  allConversions     Float?
+  viewThroughConv    Float?
+  videoViews3s       Float?
+  thruPlays          Float?
+  searchImprShare    Float? // 0..1, weighted by impressions on aggregation
+  extra              Json? // per-conversion-action detail, raw extras
+
+  @@unique([connectionId, date, level, entityId, attribution])
+  @@index([clientId, date, level])
+  @@index([clientId, platform, level, date])
+  @@map("ad_insights_daily")
+}
+
+/// Same key as AdInsightDaily + breakdown type/value. Stored at CAMPAIGN level.
+model AdInsightBreakdown {
+  id               BigInt        @id @default(autoincrement())
+  clientId         String
+  connectionId     String
+  platform         Platform
+  date             DateTime      @db.Date
+  level            EntityLevel   @default(CAMPAIGN)
+  entityId         String
+  entityName       String
+  campaignId       String?
+  breakdownType    BreakdownType
+  breakdownValue   String
+  attribution      String        @default("default")
+  currency         String
+
+  spend            Float         @default(0)
+  impressions      Int           @default(0)
+  reach            Int?
+  clicks           Int           @default(0)
+  linkClicks       Int?
+  purchases        Float         @default(0)
+  purchaseValue    Float         @default(0)
+  addToCart        Float?
+  initiateCheckout Float?
+  leads            Float?
+  results          Float?
+  resultsValue     Float?
+
+  @@unique([connectionId, date, level, entityId, breakdownType, breakdownValue, attribution])
+  @@index([clientId, breakdownType, date])
+  @@map("ad_insights_breakdown")
+}
+
+// ───────────────────────── Commerce facts ─────────────────────────
+
+model ShopifyOrder {
+  id                 String    @id @default(cuid())
+  clientId           String
+  connectionId       String
+  externalId         String
+  name               String
+  processedAt        DateTime
+  date               DateTime  @db.Date // in the store's timezone
+  currency           String
+  customerExternalId String?
+  isNewCustomer      Boolean
+  financialStatus    String?
+  cancelledAt        DateTime?
+  grossSales         Float // line items before discounts
+  discounts          Float     @default(0)
+  shipping           Float     @default(0)
+  taxes              Float     @default(0)
+  totalPrice         Float
+  refunded           Float     @default(0) // informational; refunds are booked on refund date
+  cogs               Float?
+  paymentFees        Float?
+  discountCodes      String[]  @default([])
+  sourceName         String?
+  landingSite        String?
+  referringSite      String?
+  firstUtmSource     String?
+  firstUtmMedium     String?
+  firstUtmCampaign   String?
+  lastUtmSource      String?
+  lastUtmMedium      String?
+  lastUtmCampaign    String?
+  channelFirstClick  String? // META | GOOGLE | EMAIL | ORGANIC | DIRECT | OTHER
+  channelLastClick   String?
+  updatedAt          DateTime  @updatedAt
+
+  lines   ShopifyOrderLine[]
+  refunds ShopifyRefund[]
+
+  @@unique([connectionId, externalId])
+  @@index([clientId, date])
+  @@map("shopify_orders")
+}
+
+model ShopifyOrderLine {
+  id           String       @id @default(cuid())
+  orderId      String
+  order        ShopifyOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String?
+  variantId    String?
+  sku          String?
+  title        String
+  variantTitle String?
+  quantity     Int
+  price        Float // unit price
+  discount     Float        @default(0)
+  unitCost     Float?
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("shopify_order_lines")
+}
+
+model ShopifyRefund {
+  id         String       @id @default(cuid())
+  orderId    String
+  order      ShopifyOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  clientId   String
+  externalId String
+  date       DateTime     @db.Date // refund date (store tz)
+  amount     Float
+  currency   String
+
+  @@unique([orderId, externalId])
+  @@index([clientId, date])
+  @@map("shopify_refunds")
+}
+
+model ProductCost {
+  id        String  @id @default(cuid())
+  clientId  String
+  client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  productId String
+  variantId String  @default("")
+  title     String?
+  unitCost  Float // manual override (reporting currency)
+
+  @@unique([clientId, productId, variantId])
+  @@map("product_costs")
+}
+
+model OtherRevenue {
+  id           String   @id @default(cuid())
+  clientId     String
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connectionId String?
+  date         DateTime @db.Date
+  source       String
+  revenue      Float
+  orders       Int      @default(0)
+  currency     String
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@unique([clientId, date, source])
+  @@index([clientId, date])
+  @@map("other_revenue")
+}
+
+// ───────────────────────── Planning, notes, costs ─────────────────────────
+
+model Target {
+  id           String    @id @default(cuid())
+  clientId     String
+  client       Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  month        DateTime  @db.Date // first day of month
+  platform     Platform? // null = whole client
+  connectionId String?
+  spend        Float?
+  revenue      Float?
+  mer          Float?
+  roas         Float?
+  cpa          Float?
+  ncac         Float?
+  orders       Float?
+  newCustomers Float?
+
+  @@unique([clientId, month, platform, connectionId])
+  @@map("targets")
+}
+
+model ChartNote {
+  id          String       @id @default(cuid())
+  clientId    String
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  date        DateTime     @db.Date
+  title       String
+  description String?
+  category    NoteCategory @default(OTHER)
+  createdById String?
+  createdAt   DateTime     @default(now())
+
+  @@index([clientId, date])
+  @@map("chart_notes")
+}
+
+model CostItem {
+  id        String    @id @default(cuid())
+  clientId  String
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  type      CostType
+  amount    Float
+  startDate DateTime? @db.Date
+  endDate   DateTime? @db.Date
+  @@map("cost_items")
+}
+
+// ───────────────────────── Sync ─────────────────────────
+
+model SyncJob {
+  id            String        @id @default(cuid())
+  connectionId  String
+  connection    Connection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  kind          SyncJobKind
+  status        SyncJobStatus @default(QUEUED)
+  rangeFrom     DateTime?     @db.Date
+  rangeTo       DateTime?     @db.Date
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  rowsWritten   Int           @default(0)
+  error         String?
+  rateLimitPct  Float? // last observed usage header %
+  progress      Float?
+  createdAt     DateTime      @default(now())
+
+  @@index([connectionId, createdAt])
+  @@index([status, createdAt])
+  @@map("sync_jobs")
+}
+
+// ───────────────────────── Watchdog ─────────────────────────
+
+model AlertRule {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ruleKey   String // e.g. "cpa_above_target"
+  enabled   Boolean  @default(true)
+  params    Json
+  notifyEmail Boolean @default(false)
+  notifySlack Boolean @default(false)
+
+  @@unique([clientId, ruleKey])
+  @@map("alert_rules")
+}
+
+model Alert {
+  id           String        @id @default(cuid())
+  clientId     String
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connectionId String?
+  ruleKey      String
+  severity     AlertSeverity
+  status       AlertStatus   @default(OPEN)
+  title        String
+  message      String
+  entityId     String?
+  dataLink     String? // relative URL to the Data page with filters
+  fingerprint  String // dedupe key
+  mutedUntil   DateTime?
+  createdAt    DateTime      @default(now())
+  resolvedAt   DateTime?
+
+  @@unique([clientId, fingerprint])
+  @@index([clientId, status, createdAt])
+  @@map("alerts")
+}
+
+// ───────────────────────── AI ─────────────────────────
+
+model AiConversation {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  scope     Json // { clientIds: [...], connectionIds: [...] } or { all: true }
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AiMessage[]
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        Json
+  createdAt      DateTime       @default(now())
+  @@map("ai_messages")
+}
+
+model AiInsight {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  cadence     String // daily | weekly | on_demand
+  priority    String // high | medium | low
+  title       String
+  whatChanged String
+  likelyCause String
+  action      String
+  metrics     Json
+  dataLink    String?
+  feedback    String? // useful | not_useful
+  createdAt   DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@map("ai_insights")
+}
+
+model AiUsage {
+  id           String   @id @default(cuid())
+  clientId     String?
+  userId       String?
+  feature      String // hive_mind | insights
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  costUsd      Float
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("ai_usage")
+}
