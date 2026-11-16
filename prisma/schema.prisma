@@ -201,6 +201,11 @@ model Client {
   paymentFeePct     Float        @default(2.9)
   shippingCostPerOrder Float     @default(0)
   newAudienceMinPct Float        @default(60) // Audience Types: warn when New spend share is below
+  // Breakeven calculator inputs (Targets page)
+  breakevenAov       Float?
+  breakevenMarginPct Float?
+  fixedCostsMonthly  Float        @default(0)
+  profitMultiplier   Float        @default(1.1)
   isDemo            Boolean      @default(false)
   webhookKeyHash    String?      // generic Other Revenue webhook API key (hashed)
   archivedAt        DateTime?

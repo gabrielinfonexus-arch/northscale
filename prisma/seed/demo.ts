@@ -1988,7 +1988,7 @@ export async function seedDemo(db: DB, organizationId: string, opts: { days?: nu
             connectionId: orConn.id,
             date: asDate(day),
             source: src.source,
-            revenue: round2(revenue),
+            revenue: Math.round(revenue / 100) * 100,
             orders: Math.max(1, Math.round(revenue / src.aov)),
             currency: def.currency,
           });
@@ -2056,12 +2056,12 @@ async function seedTargets(db: DB) {
         month,
         platform: null,
         connectionId: null,
-        spend: round2(spend),
-        revenue: round2(revenue),
+        spend: Math.round(spend / 100) * 100,
+        revenue: Math.round(revenue / 100) * 100,
         mer: Math.round((revenue / spend) * 100) / 100,
         orders: Math.round(m.orders * scale * f),
         newCustomers: Math.round(m.new_customers * scale * f),
-        ncac: round2((spend / Math.max(1, m.new_customers * scale)) * rng.range(0.92, 1.05)),
+        ncac: Math.round((spend / Math.max(1, m.new_customers * scale)) * rng.range(0.92, 1.05)),
       });
       for (const p of plat.filter((x) => +x.month === +m.month)) {
         const roas = (p.value / p.spend) * rng.range(0.95, 1.1);
@@ -2070,9 +2070,9 @@ async function seedTargets(db: DB) {
           month,
           platform: p.platform,
           connectionId: null,
-          spend: round2(p.spend * (dim / Math.max(1, p.days))),
+          spend: Math.round((p.spend * (dim / Math.max(1, p.days))) / 100) * 100,
           roas: Math.round(roas * 100) / 100,
-          cpa: round2((p.spend / Math.max(1, p.purchases)) * rng.range(0.9, 1.04)),
+          cpa: Math.round((p.spend / Math.max(1, p.purchases)) * rng.range(0.9, 1.04) * 2) / 2,
         });
       }
     }

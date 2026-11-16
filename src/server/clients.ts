@@ -22,6 +22,10 @@ export interface ClientSummary {
   logoUrl: string | null;
   isDemo: boolean;
   newAudienceMinPct: number;
+  breakevenAov: number | null;
+  breakevenMarginPct: number | null;
+  fixedCostsMonthly: number;
+  profitMultiplier: number;
   connections: ConnectionSummary[];
 }
 
@@ -41,6 +45,10 @@ async function loadClients(ids: string[]): Promise<ClientSummary[]> {
       logoUrl: true,
       isDemo: true,
       newAudienceMinPct: true,
+      breakevenAov: true,
+      breakevenMarginPct: true,
+      fixedCostsMonthly: true,
+      profitMultiplier: true,
       connections: {
         orderBy: [{ platform: "asc" }, { name: "asc" }],
         select: { id: true, platform: true, externalId: true, name: true, currency: true, status: true },

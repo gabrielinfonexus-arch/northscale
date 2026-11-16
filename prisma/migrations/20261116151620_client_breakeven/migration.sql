@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "clients" ADD COLUMN     "breakevenAov" DOUBLE PRECISION,
+ADD COLUMN     "breakevenMarginPct" DOUBLE PRECISION,
+ADD COLUMN     "fixedCostsMonthly" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN     "profitMultiplier" DOUBLE PRECISION NOT NULL DEFAULT 1.1;

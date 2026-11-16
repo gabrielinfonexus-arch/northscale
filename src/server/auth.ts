@@ -39,3 +39,17 @@ export async function accessibleClientIds(user: SessionUser): Promise<string[]> 
   const rows = await prisma.clientAccess.findMany({ where: { userId: user.id, client: base }, select: { clientId: true } });
   return rows.map((r) => r.clientId);
 }
+
+/** Throws unless the current user may see this client. Use in every server action / route handler. */
+export async function assertClientAccess(clientId: string): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!(await accessibleClientIds(user)).includes(clientId)) throw new Error("Forbidden");
+  return user;
+}
+
+/** Viewers are read-only. */
+export async function assertCanEdit(clientId: string): Promise<SessionUser> {
+  const user = await assertClientAccess(clientId);
+  if (user.role === "CLIENT_VIEWER") throw new Error("Forbidden");
+  return user;
+}

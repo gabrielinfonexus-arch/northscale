@@ -1,16 +1,16 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { ALL_NAV } from "@/lib/nav";
+import { ALL_NAV, CURRENT_PHASE } from "@/lib/nav";
 import { PageTitle } from "@/components/shell/page-header";
 import { EmptyState } from "@/components/shell/empty-state";
 
 export function generateStaticParams() {
-  return ALL_NAV.filter((n) => n.phase > 1).map((n) => ({ section: n.href.slice(1) }));
+  return ALL_NAV.filter((n) => n.phase > CURRENT_PHASE).map((n) => ({ section: n.href.slice(1) }));
 }
 
 async function Placeholder({ params }: { params: Promise<{ section: string }> }) {
   const { section } = await params;
-  const item = ALL_NAV.find((n) => n.href === `/${section}` && n.phase > 1);
+  const item = ALL_NAV.find((n) => n.href === `/${section}` && n.phase > CURRENT_PHASE);
   if (!item) notFound();
   return (
     <>

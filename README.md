@@ -2,7 +2,7 @@
 
 Reporting and growth-intelligence platform: Google Ads, Meta Ads, Shopify and other revenue for many clients and many accounts per client, in **one database, one format**. Every screen and the AI read from the same tables.
 
-> Status: **Phase 1 of 8** (base, layout, schema, metrics, demo data, Data page). See [Roadmap](#roadmap).
+> Status: **Phase 2 of 8** (base + Data page, Dashboard, Chart Notes, Targets). See [Roadmap](#roadmap).
 
 ## Quick start (local)
 
@@ -52,6 +52,15 @@ Platform APIs ──► connectors (phase 3+) ──► normalized fact tables �
 
 Chosen for phase 3 because it is the simplest to run with this stack: no Redis or worker server to host, functions live inside the Next.js app as a route handler (works on Vercel), and it gives retries with backoff, cron schedules, per-connection concurrency limits and throttling (useful for Meta/Google rate limits) out of the box. Local dev uses the Inngest dev server (`npx inngest-cli dev`). BullMQ would need a separate always-on worker + Redis; Trigger.dev is comparable but adds a second deploy target.
 
+## Pages so far
+
+- **Data** — the reference layout: platform tabs, breakdown sub-tabs, expandable rows, totals, colour vs comparison / vs target, column chooser (saved per user), CSV.
+- **Dashboard** — KPI cards (choose & reorder, comparison + sparkline), trend chart with dashed comparison and clickable Chart Note markers (click the chart to add a note), spend by platform, revenue by channel (Shopify UTM attribution), platform-reported vs Shopify revenue, funnel with rates and costs, top 5 campaigns / creatives / products, month pacing. Drag & resize widgets with “Edit layout” (saved per user).
+  - Two metrics on the trend chart share one axis when they have the same unit; otherwise they render as two stacked, synced panels (no dual-axis charts — they are easy to misread).
+- **Chart Notes** — per-client annotations with categories/colours; shown on every time chart and available to the AI (phase 7).
+- **Targets** — monthly targets per client and per platform, pacing (progress, projection to month-end, status), breakeven calculator (AOV, margin, fixed costs, profit multiplier → breakeven and target ROAS/MER/CPA, can pull AOV and margin from Shopify), 12-month target vs actual history.
+  - Breakeven with fixed costs: BE ROAS = (S + F) / (m·S), BE CPA = AOV·m·S / (S + F). The multiplier raises the ROAS target and lowers the CPA target.
+
 ## Deploy (summary — expanded in phase 8)
 
 - **Vercel**: import the repo, set the env vars from `.env.example`. `DATABASE_URL` must be available at **build** time too (the app shell is prerendered and reads the client list).
@@ -65,7 +74,7 @@ Step-by-step guides are added with each connector: Meta (phase 3), Google Ads de
 ## Roadmap
 
 1. ✅ Base: layout, schema, `metrics.ts`, demo seed, Data page, colour rule
-2. Dashboard, Chart Notes, Targets
+2. ✅ Dashboard, Chart Notes, Targets
 3. Meta connector (+ Sync Status / Sync Overview)
 4. Google Ads connector
 5. Shopify connector, Other Revenue, P&L, blended metrics

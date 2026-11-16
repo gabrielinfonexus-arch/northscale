@@ -130,8 +130,8 @@ test("audience types warns when New share is low", async ({ page }) => {
 });
 
 test("placeholder pages and mobile drawer", async ({ page }) => {
-  await page.goto("/dashboard");
-  await expect(page.getByText(/arrives in phase 2/)).toBeVisible();
+  await page.goto("/watchdog");
+  await expect(page.getByText(/arrives in phase \d/)).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/data");
   await page.getByRole("button", { name: "Open menu" }).click();
