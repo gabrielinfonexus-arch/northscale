@@ -222,3 +222,16 @@ export const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export function isoDow(s: string): number {
   return (parseIso(s).getUTCDay() + 6) % 7;
 }
+
+/** Split a range into windows of `days` (newest first, so recent data lands first during a backfill). */
+export function chunkRange(range: DateRange, days: number): DateRange[] {
+  const out: DateRange[] = [];
+  let to = range.to;
+  while (to >= range.from) {
+    const cand = addDays(to, -(days - 1));
+    const from = cand < range.from ? range.from : cand;
+    out.push({ from, to });
+    to = addDays(from, -1);
+  }
+  return out;
+}

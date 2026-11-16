@@ -2,7 +2,7 @@
 
 Reporting and growth-intelligence platform: Google Ads, Meta Ads, Shopify and other revenue for many clients and many accounts per client, in **one database, one format**. Every screen and the AI read from the same tables.
 
-> Status: **Phase 2 of 8** (base + Data page, Dashboard, Chart Notes, Targets). See [Roadmap](#roadmap).
+> Status: **Phase 3 of 8** (base + Data page, Dashboard, Chart Notes, Targets, Meta connector + Sync Status / Overview). See [Roadmap](#roadmap).
 
 ## Quick start (local)
 
@@ -67,15 +67,49 @@ Chosen for phase 3 because it is the simplest to run with this stack: no Redis o
 - **Supabase**: create a project, use the pooled connection string for `DATABASE_URL`, run `npm run db:migrate`.
 - **Inngest** (phase 3): connect the Vercel project; schedules are defined in code.
 
-## Platform credentials
+## Connectors & sync
 
-Step-by-step guides are added with each connector: Meta (phase 3), Google Ads developer token + OAuth + MCC (phase 4), Shopify custom app / OAuth (phase 5).
+All connectors implement one interface (`src/server/connectors/types.ts`): `inspectToken`, `listAccounts`, `syncRange`, `syncBreakdowns`, `syncCreatives`, `healthCheck`, plus optional `oauth`. Register a new platform in `src/server/connectors/registry.ts`; the engine, queue and screens need no changes. Connectors are **read-only** (the Meta client refuses any POST except starting an insights report).
+
+**Sync schedule** (`src/server/sync/engine.ts`, `src/server/queue/inngest.ts`)
+
+| Job           | When                      | Range                                             |
+| ------------- | ------------------------- | ------------------------------------------------- |
+| Backfill      | when an account is linked | 13 months, 31-day chunks, newest first            |
+| Hourly        | every hour (`:07` UTC)    | today (+ yesterday before 6am account time)       |
+| Daily re-sync | `08:23` UTC               | last 7 complete days + creatives + account health |
+| Re-sync range | “Re-sync” on Sync Status  | any range                                         |
+
+Each job replaces its date range (idempotent), refreshes the reporting views and invalidates the client's cache tag. Meta rate limits: usage headers (`x-business-use-case-usage`, `x-ad-account-usage`, `x-app-usage`) slow the client down above 75% and throttling errors wait `estimated_time_to_regain_access`; Inngest adds per-connection concurrency (1) and per-platform throttling.
+
+**Running jobs**
+
+- Production: create an Inngest account, connect the Vercel project (or set `INNGEST_EVENT_KEY` + `INNGEST_SIGNING_KEY`). Functions are served at `/api/inngest`.
+- Local: either nothing (jobs run in-process after the request, no retries/schedules) or `INNGEST_DEV=1` with `npx inngest-cli@latest dev -u http://localhost:3000/api/inngest`.
+- Mock mode: `META_MOCK=1` serves a simulated Graph API (3 ad accounts, 13 months) so the whole flow works without a Meta app. Create a sandbox client with `npm run client:create -- "Mock Brand Sandbox" USD America/New_York --demo`.
+
+### Meta — credentials step by step
+
+1. **Create the app**: [developers.facebook.com](https://developers.facebook.com) → My Apps → Create app → type **Business**. Copy the **App ID** and **App secret** (App settings → Basic) into `META_APP_ID` / `META_APP_SECRET`.
+2. **Add Marketing API** to the app (Add product → Marketing API).
+3. **Add Facebook Login for Business** → Configurations → Create configuration: login variation _General_, token type **User access token**, permissions `ads_read`, `business_management`, `leads_retrieval`, `pages_show_list`. Copy the **Configuration ID** into `META_LOGIN_CONFIG_ID`.
+4. **Valid OAuth redirect URI** (Facebook Login for Business → Settings): `https://YOUR_DOMAIN/api/connect/meta/callback` (and `http://localhost:3000/api/connect/meta/callback` for dev).
+5. **Access level**: ads_read works in Development mode for ad accounts you admin. To read accounts of other businesses, request **Advanced access** for `ads_read` (App Review) and complete Business Verification.
+6. **Connect**: Sync Status → _Connect Meta_ → _Continue with Facebook_ → choose the ad accounts for the client.
+
+**Alternative — System User token (recommended for agencies, does not expire):** Business Settings → Users → **System users** → Add (Admin) → _Add assets_ → give it the ad accounts (view performance) → **Generate new token** for your app with `ads_read` (+ `business_management`). Paste it in Sync Status → Connect Meta → _Use this token_.
+
+User tokens from OAuth last ~60 days; Sync Status warns 7 days before expiry and _Reconnect_ renews them.
+
+**Audience segments** (Audience Types tab) need the ad account's audience segments configured in Ads Manager → Advertising settings → Audience segments (engaged audience and existing customers). If they aren't, the breakdown is skipped and the tab explains how to set it up.
+
+Google Ads (phase 4) and Shopify (phase 5) guides follow with their connectors.
 
 ## Roadmap
 
 1. ✅ Base: layout, schema, `metrics.ts`, demo seed, Data page, colour rule
 2. ✅ Dashboard, Chart Notes, Targets
-3. Meta connector (+ Sync Status / Sync Overview)
+3. ✅ Meta connector (+ Sync Status / Sync Overview)
 4. Google Ads connector
 5. Shopify connector, Other Revenue, P&L, blended metrics
 6. Watchdog

@@ -249,6 +249,8 @@ model Connection {
   backfillFrom      DateTime? @db.Date
   backfillProgress  Float?    // 0..1
   isDemo            Boolean   @default(false)
+  credentialId      String?
+  credential        ConnectorCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -257,6 +259,27 @@ model Connection {
   @@unique([clientId, platform, externalId])
   @@index([platform, status])
   @@map("connections")
+}
+
+/// A platform login (OAuth user token or System User token) that can see several ad accounts.
+model ConnectorCredential {
+  id             String    @id @default(cuid())
+  organizationId String
+  platform       Platform
+  kind           String // oauth | system_user | api_token
+  label          String // e.g. "Facebook user Gabriel" / "System user NorthScale"
+  externalUserId String?
+  /// AES-256-GCM ciphertext. Never sent to the browser.
+  encryptedToken String
+  tokenExpiresAt DateTime?
+  scopes         String[]  @default([])
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  connections Connection[]
+
+  @@map("connector_credentials")
 }
 
 model FxRate {

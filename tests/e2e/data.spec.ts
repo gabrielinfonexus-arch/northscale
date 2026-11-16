@@ -126,7 +126,7 @@ test("every Data sub-tab renders", async ({ page }) => {
 
 test("audience types warns when New share is low", async ({ page }) => {
   await page.goto("/data?client=casa-verde&platform=meta&tab=audience");
-  await expect(page.getByRole("alert")).toContainText("New audiences");
+  await expect(page.getByRole("alert").filter({ hasText: "New audiences" })).toBeVisible();
 });
 
 test("placeholder pages and mobile drawer", async ({ page }) => {

@@ -2015,6 +2015,7 @@ export async function seedDemo(db: DB, organizationId: string, opts: { days?: nu
 
   await db.$executeRawUnsafe("SELECT refresh_reporting_views()");
   await seedTargets(db);
+  summary.push(`${await seedSyncHistory(db)} demo sync jobs`);
   return summary;
 }
 
@@ -2079,4 +2080,64 @@ async function seedTargets(db: DB) {
     // prisma's @@unique with nullable columns: insert directly
     for (const r of rows) await db.target.create({ data: r as never });
   }
+}
+
+/** Plausible sync history for demo connections (so Sync Status / Overview have something to show). */
+export async function seedSyncHistory(db: DB) {
+  const rng = new Rng(2024);
+  const conns = await db.connection.findMany({ where: { isDemo: true } });
+  await db.syncJob.deleteMany({ where: { connectionId: { in: conns.map((c) => c.id) } } });
+  const now = Date.now();
+  const jobs: Record<string, unknown>[] = [];
+  for (const c of conns) {
+    const baseRows = c.platform === "SHOPIFY" ? 120 : c.platform === "OTHER_REVENUE" ? 2 : 900;
+    // initial backfill 14 days ago
+    const bStart = new Date(now - 14 * DAY - rng.int(1, 5) * 3_600_000);
+    jobs.push({
+      connectionId: c.id,
+      kind: "BACKFILL",
+      status: "SUCCESS",
+      startedAt: bStart,
+      finishedAt: new Date(+bStart + rng.int(9, 40) * 60_000),
+      createdAt: bStart,
+      rowsWritten: baseRows * 300,
+      rateLimitPct: rng.range(30, 70),
+      progress: 1,
+    });
+    for (let h = 14 * 24; h >= 1; h--) {
+      if (c.platform === "OTHER_REVENUE" && h % 24 !== 0) continue;
+      const created = new Date(now - h * 3_600_000 + rng.int(0, 600) * 1000);
+      const daily = h % 24 === 0;
+      const failed = rng.chance(c.name.includes("LATAM") ? 0.06 : 0.015);
+      const dur = (daily ? rng.int(60, 240) : rng.int(8, 50)) * 1000;
+      jobs.push({
+        connectionId: c.id,
+        kind: daily ? "RESYNC_RANGE" : "INCREMENTAL",
+        status: failed ? "FAILED" : "SUCCESS",
+        createdAt: created,
+        startedAt: created,
+        finishedAt: new Date(+created + dur),
+        rowsWritten: failed ? 0 : Math.round(baseRows * (daily ? 7 : 0.2) * rng.noise(0.3)),
+        rateLimitPct:
+          c.platform === "META" || c.platform === "GOOGLE" ? Math.round(rng.range(5, c.name.includes("Prospecting") ? 82 : 45)) : null,
+        error: failed
+          ? rng.pick([
+              "(#80004) There have been too many calls to this ad-account. Wait a bit and try again.",
+              "Network error calling API: socket hang up",
+            ])
+          : null,
+        progress: failed ? null : 1,
+      });
+    }
+  }
+  for (let i = 0; i < jobs.length; i += 2000) await db.syncJob.createMany({ data: jobs.slice(i, i + 2000) as never });
+  await db.connection.updateMany({
+    where: { isDemo: true },
+    data: {
+      lastSuccessAt: new Date(now - 40 * 60_000),
+      lastSyncAt: new Date(now - 40 * 60_000),
+      nextSyncAt: new Date(Math.ceil(now / 3_600_000) * 3_600_000),
+    },
+  });
+  return jobs.length;
 }

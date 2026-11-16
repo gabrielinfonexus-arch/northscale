@@ -41,7 +41,7 @@ export function ClientSwitcher({ clients, currentId }: { clients: ClientSummary[
         <button
           type="button"
           data-testid="client-switcher"
-          className="flex h-8 max-w-[260px] items-center gap-2 rounded-md border border-border bg-surface px-2 text-[13px] hover:bg-accent"
+          className="flex h-8 max-w-[300px] items-center gap-2 whitespace-nowrap rounded-md border border-border bg-surface px-2 text-[13px] hover:bg-accent"
         >
           {current ? <Avatar name={current.name} /> : null}
           <span className="truncate font-medium">{current?.name ?? "Select client"}</span>

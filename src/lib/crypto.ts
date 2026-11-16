@@ -1,5 +1,5 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * AES-256-GCM for API tokens at rest. Format: base64(iv).base64(tag).base64(ciphertext)
@@ -38,4 +38,23 @@ export function hashToken(token: string): string {
 export function redact(secret: string | null | undefined): string {
   if (!secret) return "";
   return `••••${secret.slice(-4)}`;
+}
+
+/** HMAC-signed, expiring state for OAuth round-trips (prevents CSRF / tampering). */
+export function signState(payload: Record<string, unknown>, ttlSeconds = 900): string {
+  const body = Buffer.from(JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + ttlSeconds })).toString("base64url");
+  const mac = createHmac("sha256", key()).update(body).digest("base64url");
+  return `${body}.${mac}`;
+}
+
+export function verifyState<T extends Record<string, unknown>>(state: string): T | null {
+  const [body, mac] = state.split(".");
+  if (!body || !mac) return null;
+  const expected = createHmac("sha256", key()).update(body).digest("base64url");
+  const a = Buffer.from(mac),
+    b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  const data = JSON.parse(Buffer.from(body, "base64url").toString()) as T & { exp: number };
+  if (data.exp < Math.floor(Date.now() / 1000)) return null;
+  return data;
 }
