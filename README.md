@@ -2,7 +2,7 @@
 
 Reporting and growth-intelligence platform: Google Ads, Meta Ads, Shopify and other revenue for many clients and many accounts per client, in **one database, one format**. Every screen and the AI read from the same tables.
 
-> Status: **Phase 4 of 8** (base + Data page, Dashboard, Chart Notes, Targets, Meta and Google Ads connectors, Sync Status / Overview). See [Roadmap](#roadmap).
+> Status: **Phase 5 of 8** (base + Data page, Dashboard, Chart Notes, Targets, Meta / Google Ads / Shopify connectors, Other Revenue, P&L, Sync Status / Overview). See [Roadmap](#roadmap).
 
 ## Quick start (local)
 
@@ -24,6 +24,7 @@ npm run dev                     # http://localhost:3000
 | `npm run lint` / `typecheck` / `format` | ESLint, `tsc --noEmit`, Prettier                                                       |
 | `npm run db:migrate` / `db:migrate:dev` | Apply migrations (prod) / create new ones (dev)                                        |
 | `npm run db:seed`                       | (Re)generate demo data. Only touches `isDemo` clients.                                 |
+| `./scripts/dev-up.sh`                   | Start local Postgres (if stopped) and the dev server — handy after a container restart |
 | `npm run db:refresh-views`              | Refresh the materialized reporting views                                               |
 
 ## Architecture
@@ -119,7 +120,37 @@ Setup:
 3. **Connect**: Sync Status → _Connect Google Ads_ → _Continue with Google_ with a Google user that has access to the MCC (or directly to the accounts). The picker lists every non-manager account under each MCC; the MCC is saved per account and sent as `login-customer-id`.
 4. The refresh token doesn't expire unless revoked (or the consent screen is left in _Testing_, where Google expires it after 7 days — publish the app). If it's revoked, the account shows _Token expired_ and _Reconnect_ fixes it.
 
-Shopify (phase 5) follows with its connector.
+### Shopify — connecting a store
+
+What is synced (Admin GraphQL API `2026-10`): every order with gross sales (line items × price), discounts, shipping, taxes, total, financial status, discount codes, products/variants/quantities, refunds (booked on the **refund date**), customer, **new vs returning** (Shopify's customer order index; falls back to the store history), **COGS** (inventory unit cost → manual override → default margin), **payment fees** (from transactions, or the configured %), and the customer journey (first/last visit landing page, referrer, UTMs) for NorthScale's own **first-click / last-click attribution** (Meta, Google, Email, Organic, Direct, Other — `src/server/connectors/shopify/attribution.ts`).
+
+Real time: webhooks `orders/create`, `orders/updated`, `refunds/create` (HMAC-verified at `/api/webhooks/shopify`) re-read the order; hourly and daily syncs reconcile (`updated_at` catches late refunds and edits).
+
+Three ways to connect (Sync Status → _Connect Shopify_), because Shopify changed custom apps on 2026-01-01:
+
+1. **Existing custom app token (`shpat_…`)** — legacy custom apps created in the store admin before 2026 keep working. Scopes: `read_orders`, `read_all_orders` (older than 60 days), `read_products`, `read_inventory` (unit costs), `read_customers`. Set `SHOPIFY_WEBHOOK_SECRET` to the app's API secret key to verify its webhooks.
+2. **Dev Dashboard app on your own store (client ID + secret)** — create an app at [dev.shopify.com](https://dev.shopify.com) in the _same organization_ as the store, add the scopes above, install it on the store, then paste the client ID and secret. NorthScale requests a fresh token (client-credentials, ~24 h) on every sync, so nothing expires.
+3. **OAuth** (an app distributed to stores you don't own) — set `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET`, add `https://YOUR_DOMAIN/api/connect/shopify/callback` as an allowed redirect URL, then _Install via OAuth_ with the store domain. The callback checks the signed state and Shopify's HMAC.
+
+Webhooks are registered automatically when `APP_URL` is a public `https://` URL.
+
+COGS caveat: Shopify only keeps the **current** unit cost, so historic COGS uses today's cost. Fix past periods with overrides in **P&L → Costs**.
+
+### Other Revenue
+
+Revenue that isn't in Shopify (Amazon, Mercado Livre, Stripe, Hotmart, TikTok Shop, wholesale…) — page **Other Revenue** (also linked from Data → Other Revenue):
+
+- **Manual**: date, source, revenue, orders. Same date + source replaces the value.
+- **CSV**: `date, source, revenue[, orders][, currency]` — Portuguese headers, `;` separators and `1.234,56` numbers work.
+- **Webhook**: generate a per-client key (only its hash is stored), then `POST /api/webhooks/other-revenue` with `Authorization: Bearer nsk_…` and `{ "date", "source", "revenue", "orders"?, "currency"? }` (or an array). Idempotent per date + source.
+
+### P&L
+
+Per client, by day / week / month / year, with comparison and a waterfall:
+
+`Gross sales − discounts − refunds = Net sales` → `+ Other revenue = Total revenue` → `− COGS = Gross profit` → `− shipping cost − payment fees − variable costs = Contribution before ads` → `− ad spend per platform = Contribution margin` → `− fixed costs = Net profit`.
+
+**P&L → Costs**: shipping cost per order and/or % of net sales, payment fee %, default margin for products without cost, other costs (fixed per month — spread per day —, per order, or % of net sales, with optional start/end dates) and **COGS per product** overrides (recomputes stored COGS so every screen agrees, and survives re-syncs). The same cost model (`src/lib/pnl.ts`) feeds the Dashboard and Data “Contribution margin”, “Net profit” and margin % metrics.
 
 ## Roadmap
 
@@ -127,10 +158,10 @@ Shopify (phase 5) follows with its connector.
 2. ✅ Dashboard, Chart Notes, Targets
 3. ✅ Meta connector (+ Sync Status / Sync Overview)
 4. ✅ Google Ads connector
-5. Shopify connector, Other Revenue, P&L, blended metrics
+5. ✅ Shopify connector, Other Revenue, P&L, blended metrics
 6. Watchdog
 7. Hive-Mind + AI Insights
-8. Clients, Team Members, Client Viewers, Billing, Help, final README
+8. Go-live: **login (Supabase Auth) with roles Owner / Admin / Analyst / Client Viewer enforced on every page, server action and AI tool**, Clients page (create clients + onboarding + connect accounts), Team Members, Client Viewers (incl. expiring public links), Billing, Help, final tests, and a **deploy checklist (Vercel + Supabase + Inngest + Meta/Google/Shopify apps)**. Until this phase the app has no login — run it locally only, never on a public URL.
 
 ## Notes on versions
 

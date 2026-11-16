@@ -7,6 +7,7 @@ import { assertCanEdit, getCurrentUser } from "./auth";
 import { getConnector } from "./connectors/registry";
 import { PLATFORM_SLUG, saveCredential } from "./connect";
 import { enqueueSync } from "./queue/enqueue";
+import { decryptSecret } from "@/lib/crypto";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -38,6 +39,46 @@ export async function addTokenCredential(input: {
     return { ok: true, credentialId };
   } catch (e) {
     return { ok: false, error: `Meta rejected the token: ${(e as Error).message}` };
+  }
+}
+
+/** Shopify store: legacy custom-app token (shpat_…) or a Dev Dashboard app's client ID + secret. */
+export async function addShopifyCredential(input: {
+  clientId: string;
+  shop: string;
+  accessToken?: string;
+  appClientId?: string;
+  appClientSecret?: string;
+}): Promise<Result<{ credentialId: string }>> {
+  const d = z
+    .object({
+      clientId: z.string().min(1),
+      shop: z.string().trim().min(3).max(200),
+      accessToken: z.string().trim().max(500).optional(),
+      appClientId: z.string().trim().max(200).optional(),
+      appClientSecret: z.string().trim().max(500).optional(),
+    })
+    .safeParse(input);
+  if (!d.success) return { ok: false, error: "Fill in the store domain and either an access token or the app's client ID and secret." };
+  const user = await assertCanEdit(d.data.clientId);
+  const { shop, accessToken, appClientId, appClientSecret } = d.data;
+  if (!accessToken && !(appClientId && appClientSecret))
+    return { ok: false, error: "Paste an Admin API access token, or the app's client ID and client secret." };
+  const raw = JSON.stringify(accessToken ? { shop, accessToken } : { shop, clientId: appClientId, clientSecret: appClientSecret });
+  try {
+    const info = await getConnector("SHOPIFY").inspectToken(raw);
+    const credentialId = await saveCredential({
+      organizationId: user.organizationId,
+      platform: "SHOPIFY",
+      kind: accessToken ? "api_token" : "client_credentials",
+      token: JSON.stringify({ ...JSON.parse(raw), shop: info.id }),
+      label: `${info.name} (${info.id})`,
+      externalUserId: info.id,
+      createdById: user.id,
+    });
+    return { ok: true, credentialId };
+  } catch (e) {
+    return { ok: false, error: `Shopify rejected the credentials: ${(e as Error).message}` };
   }
 }
 
@@ -82,6 +123,7 @@ export async function linkAccounts(input: z.infer<typeof LinkInput>): Promise<Re
       },
       update: { credentialId: cred.id, status: "SYNCING", lastError: null, name: a.name, loginCustomerId: a.loginCustomerId ?? null },
     });
+    if (cred.platform === "SHOPIFY") await registerShopifyWebhooks(conn.id, cred.encryptedToken).catch(() => {});
     const hasData = await prisma.syncJob.count({ where: { connectionId: conn.id, kind: "BACKFILL", status: "SUCCESS" } });
     await enqueueSync({ connectionId: conn.id, platform: cred.platform, kind: hasData ? "INCREMENTAL" : "BACKFILL" });
   }
@@ -112,4 +154,29 @@ export async function resyncRange(connectionId: string, from: string, to: string
 export async function currentUserCanEdit() {
   const u = await getCurrentUser();
   return u.role !== "CLIENT_VIEWER";
+}
+
+/** Subscribe the store to orders/create, orders/updated and refunds/create (needs a public https APP_URL). */
+async function registerShopifyWebhooks(connectionId: string, encryptedToken: string) {
+  const base = process.env.APP_URL ?? "";
+  const mock = process.env.SHOPIFY_MOCK === "1";
+  if (!base.startsWith("https://") && !mock) return;
+  const conn = await prisma.connection.findUniqueOrThrow({ where: { id: connectionId } });
+  const connector = getConnector("SHOPIFY");
+  const r = await connector.registerWebhooks!(
+    {
+      connectionId,
+      clientId: conn.clientId,
+      externalId: conn.externalId,
+      currency: conn.currency,
+      timezone: conn.timezone,
+      token: decryptSecret(encryptedToken),
+      meta: {},
+    },
+    `${base || "https://mock.northscale.local"}/api/webhooks/shopify`,
+  );
+  await prisma.connection.update({
+    where: { id: connectionId },
+    data: { meta: { ...((conn.meta as object) ?? {}), webhooks: r.registered, webhookWarnings: r.warnings } },
+  });
 }

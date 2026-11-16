@@ -303,7 +303,17 @@ export function DataView(p: DataViewProps) {
           )}
         >
           {n.tone === "warn" ? <AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> : <Info className="mt-0.5 size-3.5 shrink-0" />}
-          <span>{n.text}</span>
+          <span>
+            {n.text}
+            {n.href && (
+              <Link
+                href={`${n.href}?${new URLSearchParams([...sp.entries()].filter(([k]) => ["client", "preset", "from", "to"].includes(k))).toString()}`}
+                className="ml-1 font-medium text-primary underline"
+              >
+                {n.linkText ?? "Open"}
+              </Link>
+            )}
+          </span>
         </div>
       ))}
 

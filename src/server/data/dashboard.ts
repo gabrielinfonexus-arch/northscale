@@ -9,6 +9,8 @@ import type { CreativeBadge } from "./types";
 import * as S from "./sql";
 import { getNotes } from "../notes";
 import { getMonthPacing, type MonthPacing } from "../targets";
+import { getCostSettings } from "../pnl";
+import { costsForDay } from "@/lib/pnl";
 
 export interface DashboardArgs {
   clientId: string;
@@ -80,10 +82,12 @@ async function blendedDaily(a: DashboardArgs, range: DateRange) {
   }
   for (const r of shop) push(r.bucket, S.pickTotals(r, S.SHOP_COLS));
   for (const r of other) push(r.bucket, { otherRevenue: r.revenue, otherOrders: r.orders });
+  const settings = await getCostSettings(a.clientId);
   const daily = new Map<string, Totals>();
   for (const d of eachDay(range)) {
     const t = sumTotals(parts.get(d) ?? []);
     t.totalRevenue = (t.netSales ?? 0) + (t.otherRevenue ?? 0);
+    Object.assign(t, costsForDay(d, t.netSales ?? 0, t.orders ?? 0, settings));
     daily.set(d, t);
   }
   return { daily, platformSpend };

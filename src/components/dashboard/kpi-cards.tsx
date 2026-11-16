@@ -26,6 +26,9 @@ export const KPI_OPTIONS = [
   "otherRevenue",
   "refunds",
   "grossMarginPct",
+  "netProfit",
+  "contributionMarginPct",
+  "netProfitPct",
 ] as const;
 export const DEFAULT_KPIS = KPI_OPTIONS.slice(0, 10) as unknown as string[];
 

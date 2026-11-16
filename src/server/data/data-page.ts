@@ -17,6 +17,8 @@ import type { DataPlatform } from "@/lib/data-tabs";
 import type { ColumnSpec, DataRow, DataTableModel, Notice } from "./types";
 import * as S from "./sql";
 import { formatMetricValue } from "@/lib/format";
+import { costsForPeriod } from "@/lib/pnl";
+import { getCostSettings } from "../pnl";
 
 export interface DataArgs {
   clientId: string;
@@ -131,6 +133,12 @@ const ALL_PLATFORMS = [
   "roas",
   "attributionDiscrepancy",
   "contributionMargin",
+  "contributionMarginPct",
+  "netProfit",
+  "netProfitPct",
+  "shippingCost",
+  "variableCosts",
+  "fixedCosts",
   "purchases",
   "cpa",
   "newCustomerRevenue",
@@ -901,10 +909,12 @@ async function blendedByBucket(a: DataArgs, range: DateRange): Promise<Map<strin
     });
   for (const r of shop) push(r.bucket, shopTotals(r));
   for (const r of other) push(r.bucket, { otherRevenue: r.revenue, otherOrders: r.orders });
+  const settings = await getCostSettings(a.clientId);
   const res = new Map<string, Totals>();
   for (const [b, list] of out) {
     const t = sumTotals(list);
     t.totalRevenue = (t.netSales ?? 0) + (t.otherRevenue ?? 0);
+    Object.assign(t, costsForPeriod(daysOfBucket(b, a.gran, range), t.netSales ?? 0, t.orders ?? 0, settings));
     res.set(b, t);
   }
   return res;
@@ -1005,6 +1015,14 @@ async function otherRevenueTab(a: DataArgs): Promise<DataTableModel> {
     children,
   );
   return baseModel(a, {
+    notices: [
+      {
+        tone: "info",
+        text: "Manual entries, CSV imports and webhook pushes land here.",
+        href: "/other-revenue",
+        linkText: "Manage other revenue",
+      },
+    ],
     firstColumn: "Date",
     columns: metricCols(["otherRevenue", "otherOrders"]),
     defaultVisible: ["otherRevenue", "otherOrders"],

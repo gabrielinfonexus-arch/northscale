@@ -9,7 +9,7 @@ export const PLATFORM_SLUG: Record<string, ConnectorPlatform> = { meta: "META", 
 export async function saveCredential(input: {
   organizationId: string;
   platform: ConnectorPlatform;
-  kind: "oauth" | "system_user" | "api_token";
+  kind: "oauth" | "system_user" | "api_token" | "client_credentials";
   token: string;
   label: string;
   externalUserId?: string | null;

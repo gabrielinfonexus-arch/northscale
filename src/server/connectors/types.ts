@@ -56,10 +56,14 @@ export interface HealthResult {
 }
 
 export interface OAuthSupport {
-  /** URL to send the user to. */
-  authorizeUrl(state: string, redirectUri: string): string;
-  /** Exchange the callback code for a long-lived token. */
-  exchangeCode(code: string, redirectUri: string): Promise<{ token: string; expiresAt: Date | null; userId?: string; userName?: string }>;
+  /** URL to send the user to. `extra` carries platform inputs such as the Shopify shop domain. */
+  authorizeUrl(state: string, redirectUri: string, extra?: Record<string, string>): string;
+  /** Exchange the callback code for a long-lived token. `extra` = callback query params (e.g. shop). */
+  exchangeCode(
+    code: string,
+    redirectUri: string,
+    extra?: Record<string, string>,
+  ): Promise<{ token: string; expiresAt: Date | null; userId?: string; userName?: string }>;
 }
 
 export interface Connector {
@@ -76,6 +80,8 @@ export interface Connector {
   /** Creatives / ad metadata (thumbnails, copy, URLs). */
   syncCreatives?(ctx: ConnectorContext): Promise<SyncResult>;
   healthCheck(ctx: ConnectorContext): Promise<HealthResult>;
+  /** Subscribe to platform webhooks for near-real-time updates (Shopify orders). */
+  registerWebhooks?(ctx: ConnectorContext, callbackUrl: string): Promise<{ registered: string[]; warnings: string[] }>;
 }
 
 /** Errors every connector maps its platform errors into, so the engine can react uniformly. */

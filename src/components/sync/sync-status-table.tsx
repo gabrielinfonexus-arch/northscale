@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PlatformDot, PLATFORM_LABEL } from "@/components/shell/platform";
-import { addTokenCredential, resyncRange, syncNow } from "@/server/sync-actions";
+import { addShopifyCredential, addTokenCredential, resyncRange, syncNow } from "@/server/sync-actions";
 import type { ConnectionStatusRow } from "@/server/sync-status";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +45,7 @@ export function SyncStatusTable({
   const [onlyClient, setOnlyClient] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [googleOpen, setGoogleOpen] = useState(false);
+  const [shopifyOpen, setShopifyOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [, start] = useTransition();
   const running = rows.some((r) => r.status === "SYNCING" || r.lastJob?.status === "RUNNING" || r.lastJob?.status === "QUEUED");
@@ -82,6 +83,9 @@ export function SyncStatusTable({
         )}
         {currentClient && (
           <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShopifyOpen(true)} data-testid="connect-shopify">
+              <Plus /> Connect Shopify
+            </Button>
             <Button size="sm" variant="outline" onClick={() => setGoogleOpen(true)} data-testid="connect-google">
               <Plus /> Connect Google Ads
             </Button>
@@ -194,7 +198,7 @@ export function SyncStatusTable({
               {shown.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-3 py-12 text-center text-muted">
-                    No connections yet. Connect a Meta or Google Ads account to start syncing.
+                    No connections yet. Connect Meta, Google Ads or a Shopify store to start syncing.
                   </td>
                 </tr>
               )}
@@ -204,6 +208,7 @@ export function SyncStatusTable({
       </Card>
       {currentClient && <ConnectDialog open={connectOpen} onOpenChange={setConnectOpen} client={currentClient} />}
       {currentClient && <GoogleConnectDialog open={googleOpen} onOpenChange={setGoogleOpen} client={currentClient} />}
+      {currentClient && <ShopifyConnectDialog open={shopifyOpen} onOpenChange={setShopifyOpen} client={currentClient} />}
     </>
   );
 }
@@ -345,6 +350,139 @@ function GoogleConnectDialog({
         >
           <span className="text-[15px] font-bold text-[#4285f4]">G</span> Continue with Google
         </a>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ShopifyConnectDialog({
+  open,
+  onOpenChange,
+  client,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  client: { id: string; name: string; slug: string };
+}) {
+  const router = useRouter();
+  const [shop, setShop] = useState("");
+  const [mode, setMode] = useState<"token" | "app" | "oauth">("token");
+  const [token, setToken] = useState("");
+  const [appId, setAppId] = useState("");
+  const [appSecret, setAppSecret] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const field =
+    "h-8 rounded-md border border-border bg-surface px-2 font-mono text-[12px] text-foreground outline-none focus:ring-2 focus:ring-ring";
+  const submit = () =>
+    start(async () => {
+      setError(null);
+      const r = await addShopifyCredential({
+        clientId: client.id,
+        shop,
+        ...(mode === "token" ? { accessToken: token } : { appClientId: appId, appClientSecret: appSecret }),
+      });
+      if (!r.ok) return setError(r.error);
+      router.push(`/connect/shopify?credential=${r.credentialId}&client=${client.slug}`);
+    });
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogTitle className="text-base font-semibold">Connect a Shopify store to {client.name}</DialogTitle>
+        <DialogDescription className="mb-3 text-xs text-muted">
+          Read-only access to orders, products and inventory costs (read_orders, read_all_orders, read_products, read_inventory).
+          Credentials are stored encrypted.
+        </DialogDescription>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Store domain
+            <input
+              value={shop}
+              onChange={(e) => setShop(e.target.value)}
+              placeholder="brand.myshopify.com"
+              className={field}
+              aria-label="Store domain"
+              autoComplete="off"
+            />
+          </label>
+          <div role="tablist" className="flex gap-1 rounded-lg bg-accent p-0.5 text-xs">
+            {(
+              [
+                ["token", "Access token"],
+                ["app", "App client ID + secret"],
+                ["oauth", "Install via OAuth"],
+              ] as const
+            ).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                onClick={() => setMode(m)}
+                className={cn("flex-1 rounded-md px-2 py-1", mode === m ? "bg-surface font-medium shadow-sm" : "text-muted")}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {mode === "token" && (
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              Admin API access token of an existing custom app (starts with shpat_)
+              <input
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                className={field}
+                placeholder="shpat_…"
+                aria-label="Admin API access token"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+          )}
+          {mode === "app" && (
+            <>
+              <p className="text-[11.5px] text-muted">
+                Dev Dashboard app installed on this store (your own organization). NorthScale requests a fresh token on every sync.
+              </p>
+              <input
+                value={appId}
+                onChange={(e) => setAppId(e.target.value)}
+                className={field}
+                placeholder="Client ID"
+                aria-label="App client ID"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <input
+                value={appSecret}
+                onChange={(e) => setAppSecret(e.target.value)}
+                className={field}
+                placeholder="Client secret"
+                aria-label="App client secret"
+                type="password"
+                autoComplete="off"
+              />
+            </>
+          )}
+          {mode === "oauth" ? (
+            <a
+              href={`/api/connect/shopify/start?client=${client.id}&shop=${encodeURIComponent(shop)}`}
+              aria-disabled={shop.length < 3}
+              className={cn(
+                "flex items-center justify-center rounded-lg bg-[#5e8e3e] px-4 py-2.5 text-[13.5px] font-medium text-white hover:opacity-90",
+                shop.length < 3 && "pointer-events-none opacity-50",
+              )}
+              data-testid="shopify-oauth"
+            >
+              Install NorthScale on the store
+            </a>
+          ) : (
+            <Button onClick={submit} disabled={pending || shop.length < 3} data-testid="submit-shopify">
+              {pending ? "Checking…" : "Connect store"}
+            </Button>
+          )}
+          {error && <p className="text-xs text-bad">{error}</p>}
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -47,6 +47,9 @@ export const BASE_KEYS = [
   "attributedRevenue",
   "units",
   "refundCount",
+  "shippingCost",
+  "variableCosts",
+  "fixedCosts",
 ] as const;
 
 export type BaseKey = (typeof BASE_KEYS)[number];
@@ -318,6 +321,25 @@ export const METRICS: MetricDef[] = [
     "Share of gross sales refunded.",
     (t) => div(v(t, "refunds"), v(t, "grossSales")),
   ),
+  base(
+    "shippingCost",
+    "Shipping cost",
+    "Ship. Cost",
+    "currency",
+    "down",
+    "Commerce",
+    "Fulfilment cost = orders × cost per order + % of net sales (P&L → Costs).",
+  ),
+  base(
+    "variableCosts",
+    "Variable costs",
+    "Var. Costs",
+    "currency",
+    "down",
+    "Commerce",
+    "Other variable costs per order or % of revenue (P&L → Costs).",
+  ),
+  base("fixedCosts", "Fixed costs", "Fixed Costs", "currency", "down", "Commerce", "Monthly fixed costs spread per day (P&L → Costs)."),
   base("units", "Units sold", "Units", "number", "up", "Commerce", "Quantity of items sold."),
   base("refundCount", "Refunds (count)", "# Refunds", "number", "down", "Commerce", "Number of refunds issued."),
   base("otherRevenue", "Other revenue", "Other Rev.", "currency", "up", "Commerce", "Revenue from other sources (manual, CSV, webhook)."),
@@ -394,13 +416,57 @@ export const METRICS: MetricDef[] = [
     "currency",
     "up",
     "Blended",
-    "Net sales + Other revenue − COGS − Shipping cost − Payment fees − Ad spend",
-    "What is left after variable costs and ads (detailed in P&L).",
+    "Net sales + Other revenue − COGS − Shipping cost − Payment fees − Variable costs − Ad spend",
+    "What is left after product costs, fulfilment, fees, variable costs and ads (see P&L).",
     (t) => {
       const ns = v(t, "netSales");
       if (ns === null) return null;
-      return ns + (v(t, "otherRevenue") ?? 0) - (v(t, "cogs") ?? 0) - (v(t, "paymentFees") ?? 0) - (v(t, "spend") ?? 0);
+      return (
+        ns +
+        (v(t, "otherRevenue") ?? 0) -
+        (v(t, "cogs") ?? 0) -
+        (v(t, "shippingCost") ?? 0) -
+        (v(t, "paymentFees") ?? 0) -
+        (v(t, "variableCosts") ?? 0) -
+        (v(t, "spend") ?? 0)
+      );
     },
+  ),
+  derived(
+    "contributionMarginPct",
+    "Contribution margin %",
+    "CM %",
+    "percent",
+    "up",
+    "Blended",
+    "Contribution margin / Total revenue",
+    "Contribution margin as a share of total revenue.",
+    (t) => div(METRIC_MAP_LAZY().contributionMargin.compute(t), v(t, "totalRevenue")),
+  ),
+  derived(
+    "netProfit",
+    "Net profit",
+    "Net Profit",
+    "currency",
+    "up",
+    "Blended",
+    "Contribution margin − Fixed costs",
+    "Profit after fixed costs (monthly costs spread per day).",
+    (t) => {
+      const cm = METRIC_MAP_LAZY().contributionMargin.compute(t);
+      return cm === null ? null : cm - (v(t, "fixedCosts") ?? 0);
+    },
+  ),
+  derived(
+    "netProfitPct",
+    "Net margin %",
+    "Net %",
+    "percent",
+    "up",
+    "Blended",
+    "Net profit / Total revenue",
+    "Net profit as a share of total revenue.",
+    (t) => div(METRIC_MAP_LAZY().netProfit.compute(t), v(t, "totalRevenue")),
   ),
   derived(
     "grossMarginPct",
@@ -470,6 +536,9 @@ export const METRICS: MetricDef[] = [
 ];
 
 export const METRIC_MAP: Record<string, MetricDef> = Object.fromEntries(METRICS.map((m) => [m.key, m]));
+function METRIC_MAP_LAZY() {
+  return METRIC_MAP;
+}
 
 export function getMetric(key: string): MetricDef {
   const m = METRIC_MAP[key];

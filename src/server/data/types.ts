@@ -47,6 +47,8 @@ export interface HeatmapChart {
 export interface Notice {
   tone: "warn" | "info";
   text: string;
+  href?: string;
+  linkText?: string;
 }
 
 export interface DataTableModel {

@@ -1997,6 +1997,18 @@ export async function seedDemo(db: DB, organizationId: string, opts: { days?: nu
       await db.otherRevenue.createMany({ data: otherRows as never });
     }
 
+    // P&L cost model (shipping cost per order is on the client)
+    const k = def.currency === "BRL" ? 5 : 1;
+    await db.costItem.createMany({
+      data: [
+        { clientId: client.id, name: "Team & salaries", type: "FIXED_MONTHLY", amount: 18000 * k },
+        { clientId: client.id, name: "Apps & software", type: "FIXED_MONTHLY", amount: 1200 * k },
+        { clientId: client.id, name: "Agency retainer", type: "FIXED_MONTHLY", amount: 4000 * k },
+        { clientId: client.id, name: "Packaging", type: "VARIABLE_PER_ORDER", amount: 1.2 * k },
+        { clientId: client.id, name: "Affiliate commissions", type: "VARIABLE_PCT_REVENUE", amount: 1.5 },
+      ],
+    });
+
     // Chart notes
     await db.chartNote.createMany({
       data: def.notes.map((n) => ({

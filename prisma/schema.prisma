@@ -200,6 +200,7 @@ model Client {
   defaultMarginPct  Float        @default(60) // gross margin used when COGS is unknown
   paymentFeePct     Float        @default(2.9)
   shippingCostPerOrder Float     @default(0)
+  shippingCostPct      Float     @default(0) // % of net sales, alternative/addition to per-order cost
   newAudienceMinPct Float        @default(60) // Audience Types: warn when New spend share is below
   // Breakeven calculator inputs (Targets page)
   breakevenAov       Float?
