@@ -44,6 +44,7 @@ export function SyncStatusTable({
   const router = useRouter();
   const [onlyClient, setOnlyClient] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [googleOpen, setGoogleOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [, start] = useTransition();
   const running = rows.some((r) => r.status === "SYNCING" || r.lastJob?.status === "RUNNING" || r.lastJob?.status === "QUEUED");
@@ -80,9 +81,14 @@ export function SyncStatusTable({
           </span>
         )}
         {currentClient && (
-          <Button size="sm" className="ml-auto" onClick={() => setConnectOpen(true)} data-testid="connect-meta">
-            <Plus /> Connect Meta
-          </Button>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setGoogleOpen(true)} data-testid="connect-google">
+              <Plus /> Connect Google Ads
+            </Button>
+            <Button size="sm" onClick={() => setConnectOpen(true)} data-testid="connect-meta">
+              <Plus /> Connect Meta
+            </Button>
+          </div>
         )}
       </div>
       <Card className="overflow-hidden">
@@ -173,9 +179,9 @@ export function SyncStatusTable({
                           <RefreshCw className={cn(busy === r.id && "animate-spin")} /> Sync now
                         </Button>
                         <ResyncPopover now={now} onSubmit={(from, to) => act(r.id, () => resyncRange(r.id, from, to))} />
-                        {r.platform === "META" && !r.isDemo && (
+                        {(r.platform === "META" || r.platform === "GOOGLE") && !r.isDemo && (
                           <Button variant="ghost" size="sm" asChild>
-                            <a href={`/api/connect/meta/start?client=${r.clientId}`}>
+                            <a href={`/api/connect/${r.platform === "META" ? "meta" : "google"}/start?client=${r.clientId}`}>
                               <Link2 /> Reconnect
                             </a>
                           </Button>
@@ -188,7 +194,7 @@ export function SyncStatusTable({
               {shown.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-3 py-12 text-center text-muted">
-                    No connections yet. Connect a Meta account to start syncing.
+                    No connections yet. Connect a Meta or Google Ads account to start syncing.
                   </td>
                 </tr>
               )}
@@ -197,6 +203,7 @@ export function SyncStatusTable({
         </div>
       </Card>
       {currentClient && <ConnectDialog open={connectOpen} onOpenChange={setConnectOpen} client={currentClient} />}
+      {currentClient && <GoogleConnectDialog open={googleOpen} onOpenChange={setGoogleOpen} client={currentClient} />}
     </>
   );
 }
@@ -309,6 +316,35 @@ function ConnectDialog({
             {pending ? "Checking token…" : "Use this token"}
           </Button>
         </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GoogleConnectDialog({
+  open,
+  onOpenChange,
+  client,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  client: { id: string; name: string };
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogTitle className="text-base font-semibold">Connect Google Ads to {client.name}</DialogTitle>
+        <DialogDescription className="mb-3 text-xs text-muted">
+          Read-only reporting through the Google Ads API. Sign in with a Google account that has access to the ad accounts or to their
+          manager account (MCC); you will pick the accounts next. The refresh token is stored encrypted.
+        </DialogDescription>
+        <a
+          href={`/api/connect/google/start?client=${client.id}`}
+          className="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-[13.5px] font-medium hover:bg-accent"
+          data-testid="google-login"
+        >
+          <span className="text-[15px] font-bold text-[#4285f4]">G</span> Continue with Google
+        </a>
       </DialogContent>
     </Dialog>
   );

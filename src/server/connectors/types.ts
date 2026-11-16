@@ -17,6 +17,8 @@ export interface ExternalAccount {
   status: string;
   /** e.g. Business Manager / MCC name */
   parent?: string | null;
+  /** Google Ads: manager account (MCC) to send as login-customer-id */
+  loginCustomerId?: string | null;
 }
 
 /** What a connector needs to run for one connection. */
@@ -27,6 +29,8 @@ export interface ConnectorContext {
   currency: string;
   timezone: string;
   token: string;
+  /** Google Ads manager account id (login-customer-id), when reached through an MCC */
+  loginCustomerId?: string | null;
   meta: Record<string, unknown>;
   /** Called with platform usage (0..100) whenever rate-limit headers are seen. */
   onUsage?: (pct: number) => void;

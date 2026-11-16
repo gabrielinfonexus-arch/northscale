@@ -34,6 +34,7 @@ export const SUB_TABS: Record<DataPlatform, { id: string; label: string }[]> = {
     { id: "core", label: "Core" },
     { id: "campaigns", label: "Campaigns" },
     { id: "adsets", label: "Ad Groups" },
+    { id: "ads", label: "Ads" },
     { id: "keywords", label: "Keywords" },
     { id: "search-terms", label: "Search Terms" },
     { id: "age", label: "Age" },

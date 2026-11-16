@@ -121,6 +121,7 @@ export async function runSync(
     currency: conn.currency,
     timezone: conn.timezone,
     token: decryptSecret(encrypted),
+    loginCustomerId: conn.loginCustomerId,
     meta: (conn.meta as Record<string, unknown>) ?? {},
     onUsage: (p) => (usage = Math.max(usage, p)),
   };

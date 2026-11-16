@@ -42,7 +42,13 @@ export function AccountPicker({
       const r = await linkAccounts({
         credentialId,
         clientId,
-        accounts: chosen.map(({ externalId, name, currency, timezone }) => ({ externalId, name, currency, timezone })),
+        accounts: chosen.map(({ externalId, name, currency, timezone, loginCustomerId }) => ({
+          externalId,
+          name,
+          currency,
+          timezone,
+          loginCustomerId,
+        })),
       });
       if (!r.ok) return setError(r.error);
       router.push(`/sync-status?client=${clientSlug}&connected=${chosen.length}`);

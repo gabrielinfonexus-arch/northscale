@@ -2,7 +2,7 @@
 
 Reporting and growth-intelligence platform: Google Ads, Meta Ads, Shopify and other revenue for many clients and many accounts per client, in **one database, one format**. Every screen and the AI read from the same tables.
 
-> Status: **Phase 3 of 8** (base + Data page, Dashboard, Chart Notes, Targets, Meta connector + Sync Status / Overview). See [Roadmap](#roadmap).
+> Status: **Phase 4 of 8** (base + Data page, Dashboard, Chart Notes, Targets, Meta and Google Ads connectors, Sync Status / Overview). See [Roadmap](#roadmap).
 
 ## Quick start (local)
 
@@ -103,14 +103,30 @@ User tokens from OAuth last ~60 days; Sync Status warns 7 days before expiry and
 
 **Audience segments** (Audience Types tab) need the ad account's audience segments configured in Ads Manager → Advertising settings → Audience segments (engaged audience and existing customers). If they aren't, the breakdown is skipped and the tab explains how to set it up.
 
-Google Ads (phase 4) and Shopify (phase 5) guides follow with their connectors.
+### Google Ads — credentials step by step
+
+NorthScale calls the Google Ads API over REST (`googleads.googleapis.com/v26/…/googleAds:searchStream`) with GAQL. What is synced:
+
+- Daily metrics per account, campaign, ad group, ad, keyword and search term: cost, impressions, clicks, conversions (“Conv.” = primary conversions), conversion value, all conversions, view-through conversions, search impression share.
+- Conversions by action category (purchase, add to cart, begin checkout, leads) feed ATC / IC / Leads. Accounts without such actions show “—”.
+- Breakdowns: hour, device, age (`age_range_view`), gender (`gender_view`), country (`geographic_view`, location of presence). Day of week and campaign type (Search, PMax, Shopping, Demand Gen, YouTube…) come from the daily data and campaign settings. Google doesn't report age/gender for Performance Max.
+- Ad approval status (disapproved / limited) and account status for the Watchdog.
+
+Setup:
+
+1. **Developer token**: sign in to your **manager account (MCC)** → Admin → **API Center** → apply. A new token has _Test_ access (test accounts only); apply for **Basic access** (15,000 operations/day) to read real accounts. Put it in `GOOGLE_ADS_DEVELOPER_TOKEN`.
+2. **OAuth client**: [console.cloud.google.com](https://console.cloud.google.com) → create a project → _APIs & Services_ → enable **Google Ads API** → _OAuth consent screen_ (External, add scope `.../auth/adwords`; publish it or add your users as testers) → _Credentials_ → **Create OAuth client ID** → _Web application_ → authorised redirect URI `https://YOUR_DOMAIN/api/connect/google/callback` (and `http://localhost:3000/api/connect/google/callback`). Copy the ID/secret to `GOOGLE_ADS_CLIENT_ID` / `GOOGLE_ADS_CLIENT_SECRET`.
+3. **Connect**: Sync Status → _Connect Google Ads_ → _Continue with Google_ with a Google user that has access to the MCC (or directly to the accounts). The picker lists every non-manager account under each MCC; the MCC is saved per account and sent as `login-customer-id`.
+4. The refresh token doesn't expire unless revoked (or the consent screen is left in _Testing_, where Google expires it after 7 days — publish the app). If it's revoked, the account shows _Token expired_ and _Reconnect_ fixes it.
+
+Shopify (phase 5) follows with its connector.
 
 ## Roadmap
 
 1. ✅ Base: layout, schema, `metrics.ts`, demo seed, Data page, colour rule
 2. ✅ Dashboard, Chart Notes, Targets
 3. ✅ Meta connector (+ Sync Status / Sync Overview)
-4. Google Ads connector
+4. ✅ Google Ads connector
 5. Shopify connector, Other Revenue, P&L, blended metrics
 6. Watchdog
 7. Hive-Mind + AI Insights

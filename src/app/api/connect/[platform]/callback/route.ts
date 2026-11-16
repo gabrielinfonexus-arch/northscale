@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/connect/[pla
       platform: PLATFORM_SLUG[slug],
       kind: "oauth",
       token: t.token,
-      label: t.userName ? `${t.userName} (Facebook login)` : "Facebook login",
+      label: `${t.userName ?? "Signed-in user"} (${slug === "google" ? "Google" : "Facebook"} login)`,
       externalUserId: t.userId,
       expiresAt: t.expiresAt,
       createdById: user.id,

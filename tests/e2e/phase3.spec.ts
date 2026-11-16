@@ -37,6 +37,7 @@ test("connect start requires edit rights on the client", async ({ page }) => {
 test("System User token → pick account → backfill → health shows account problem", async ({ page }) => {
   test.setTimeout(180_000);
   await page.goto("/sync-status?client=mock-brand-sandbox");
+  await page.getByTestId("sync-status-table").waitFor();
   test.skip(!(await page.getByText("Meta mock mode is on").isVisible()), "requires META_MOCK=1");
   await page.getByTestId("connect-meta").click();
   await page.getByLabel("System user token").fill("mock-system-user-token-0123456789");

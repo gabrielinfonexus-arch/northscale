@@ -1,10 +1,12 @@
 import "server-only";
 import type { Connector, ConnectorPlatform } from "./types";
 import { metaConnector } from "./meta/connector";
+import { googleConnector } from "./google/connector";
 
 /** Add new platforms here (Google in phase 4, Shopify in phase 5, later TikTok, Klaviyo, Amazon…). */
 const CONNECTORS: Partial<Record<ConnectorPlatform, Connector>> = {
   META: metaConnector,
+  GOOGLE: googleConnector,
 };
 
 export function getConnector(platform: ConnectorPlatform): Connector {

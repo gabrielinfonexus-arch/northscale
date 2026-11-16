@@ -46,7 +46,13 @@ const LinkInput = z.object({
   clientId: z.string().min(1),
   accounts: z
     .array(
-      z.object({ externalId: z.string().min(1), name: z.string().min(1), currency: z.string().length(3), timezone: z.string().min(1) }),
+      z.object({
+        externalId: z.string().min(1),
+        name: z.string().min(1),
+        currency: z.string().length(3),
+        timezone: z.string().min(1),
+        loginCustomerId: z.string().nullish(),
+      }),
     )
     .min(1)
     .max(100),
@@ -70,10 +76,11 @@ export async function linkAccounts(input: z.infer<typeof LinkInput>): Promise<Re
         timezone: a.timezone,
         status: "SYNCING",
         credentialId: cred.id,
+        loginCustomerId: a.loginCustomerId ?? null,
         backfillProgress: 0,
         meta: { accountName: a.name },
       },
-      update: { credentialId: cred.id, status: "SYNCING", lastError: null, name: a.name },
+      update: { credentialId: cred.id, status: "SYNCING", lastError: null, name: a.name, loginCustomerId: a.loginCustomerId ?? null },
     });
     const hasData = await prisma.syncJob.count({ where: { connectionId: conn.id, kind: "BACKFILL", status: "SUCCESS" } });
     await enqueueSync({ connectionId: conn.id, platform: cred.platform, kind: hasData ? "INCREMENTAL" : "BACKFILL" });
