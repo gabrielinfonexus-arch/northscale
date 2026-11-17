@@ -159,19 +159,19 @@ Automatic, **read-only** monitoring (it never pauses or edits anything in an ad 
 
 Rules (`src/lib/watchdog/rules.ts`, pure and unit-tested; every threshold editable per client in **Watchdog → Rules**, targets come from **Targets**):
 
-| Rule | Default |
-| --- | --- |
-| CPA above target | Platform CPA over the last 3 days > target +20% (critical at 1.5×), min spend 100 |
-| ROAS / MER below target or dropping | Below the monthly target, or −20% vs the previous 7-day average (platforms + blended MER) |
-| Spend pacing | Projected month-end spend outside budget ±10% (from day 3) |
-| Account stopped spending / account problem | Yesterday < 10% of a normal (≥ 50/day) spend; or the platform reports the account as disabled / unsettled |
-| Rejected ad | Disapproved / limited ads (Meta review feedback, Google policy summary) |
-| High frequency in prospecting | Meta prospecting campaigns with 7-day frequency > 2.5 |
-| Tracking looks broken | Platform purchases collapse while Shopify orders hold (or the opposite), or the platform-vs-Shopify gap moves far from normal |
-| Funnel diagnosis | CPA up: CPC / cost per add-to-cart also up → traffic got expensive (warning); stable → conversion issue, hold (info) |
-| Ad to cut | CPA ≥ 2× target after spending ≥ 2× target CPA (14 days) |
-| Winning ad | ≥ 5% of spend over 14 days and above target ROAS (info) |
-| Sync failed / token expired | Sync errors, revoked tokens, data older than 24 h, token expiring within 7 days (demo connections ignored) |
+| Rule                                       | Default                                                                                                                       |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| CPA above target                           | Platform CPA over the last 3 days > target +20% (critical at 1.5×), min spend 100                                             |
+| ROAS / MER below target or dropping        | Below the monthly target, or −20% vs the previous 7-day average (platforms + blended MER)                                     |
+| Spend pacing                               | Projected month-end spend outside budget ±10% (from day 3)                                                                    |
+| Account stopped spending / account problem | Yesterday < 10% of a normal (≥ 50/day) spend; or the platform reports the account as disabled / unsettled                     |
+| Rejected ad                                | Disapproved / limited ads (Meta review feedback, Google policy summary)                                                       |
+| High frequency in prospecting              | Meta prospecting campaigns with 7-day frequency > 2.5                                                                         |
+| Tracking looks broken                      | Platform purchases collapse while Shopify orders hold (or the opposite), or the platform-vs-Shopify gap moves far from normal |
+| Funnel diagnosis                           | CPA up: CPC / cost per add-to-cart also up → traffic got expensive (warning); stable → conversion issue, hold (info)          |
+| Ad to cut                                  | CPA ≥ 2× target after spending ≥ 2× target CPA (14 days)                                                                      |
+| Winning ad                                 | ≥ 5% of spend over 14 days and above target ROAS (info)                                                                       |
+| Sync failed / token expired                | Sync errors, revoked tokens, data older than 24 h, token expiring within 7 days (demo connections ignored)                    |
 
 **Alert lifecycle** — de-duplicated by fingerprint (one alert per condition, numbers refreshed on each check). Alerts whose condition clears are resolved automatically (“Cleared automatically”). **Resolve** acknowledges an alert: it stays resolved while the condition persists and reopens only if it gets worse, or clears and comes back. **Mute for 1/3/7/14 days** silences it; it reopens afterwards if still true. Each alert has a **View data** link that opens Data on the right platform, tab, period and account. The sidebar shows the number of open critical alerts.
 
