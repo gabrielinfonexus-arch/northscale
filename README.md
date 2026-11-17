@@ -65,6 +65,16 @@ Chosen for phase 3 because it is the simplest to run with this stack: no Redis o
 
 ## Deploy (summary — expanded in phase 8)
 
+### Online preview with a password (Vercel + Supabase)
+
+Until login (phase 8) the whole site sits behind one password (`src/proxy.ts`, HTTP Basic auth; webhooks keep their own signature/key checks). Without `SITE_PASSWORD` a production deploy refuses to serve.
+
+1. **Supabase** → new project → _Connect_ → copy the **Session pooler** connection string (port 5432; works from Vercel, which has no IPv6).
+2. **Vercel** → _Add New → Project_ → import this GitHub repo. Environment variables: `DATABASE_URL` (step 1), `ENCRYPTION_KEY` (`openssl rand -hex 32`), `SITE_PASSWORD`, `APP_URL` (the Vercel URL, after the first deploy).
+3. Deploy. `npm run vercel-build` applies the migrations and, on an empty database, creates the demo clients (`SEED_DEMO_ON_DEPLOY=0` to skip), then builds. Every push to `main` redeploys.
+
+Mock connectors are refused in production; connecting real accounts needs the Meta / Google / Shopify app credentials below.
+
 - **Vercel**: import the repo, set the env vars from `.env.example`. `DATABASE_URL` must be available at **build** time too (the app shell is prerendered and reads the client list).
 - **Supabase**: create a project, use the pooled connection string for `DATABASE_URL`, run `npm run db:migrate`.
 - **Inngest** (phase 3): connect the Vercel project; schedules are defined in code.
