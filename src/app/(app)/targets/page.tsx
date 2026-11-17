@@ -23,7 +23,7 @@ const monthName = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice
 const SCOPE_TITLE: Record<TargetScope, string> = { CLIENT: "Whole client", META: "Meta", GOOGLE: "Google" };
 
 async function TargetsContent({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "targets");
   const { client } = ctx;
   if (!client) {
     return (

@@ -37,7 +37,7 @@ function DataSkeleton() {
 const PLATFORM_ENUM = { meta: "META", google: "GOOGLE", shopify: "SHOPIFY", other: "OTHER_REVENUE" } as const;
 
 async function DataContent({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "data");
   const { client, filters } = ctx;
   if (!client) {
     return (

@@ -129,9 +129,7 @@ test("audience types warns when New share is low", async ({ page }) => {
   await expect(page.getByRole("alert").filter({ hasText: "New audiences" })).toBeVisible();
 });
 
-test("placeholder pages and mobile drawer", async ({ page }) => {
-  await page.goto("/clients");
-  await expect(page.getByText(/arrives in phase \d/)).toBeVisible();
+test("mobile drawer", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/data");
   await page.getByRole("button", { name: "Open menu" }).click();

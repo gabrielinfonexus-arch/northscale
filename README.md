@@ -2,7 +2,7 @@
 
 Reporting and growth-intelligence platform: Google Ads, Meta Ads, Shopify and other revenue for many clients and many accounts per client, in **one database, one format**. Every screen and the AI read from the same tables.
 
-> Status: **Phase 5 of 8** (base + Data page, Dashboard, Chart Notes, Targets, Meta / Google Ads / Shopify connectors, Other Revenue, P&L, Sync Status / Overview). See [Roadmap](#roadmap).
+> Status: **all 8 phases built** — Data, Dashboard, Chart Notes, Targets, P&L, Meta / Google Ads / Shopify / Other Revenue connectors, Watchdog, Hive-Mind, AI Insights, Clients, Team Members, Client Viewers, Billing, Help, login with roles. See [Deploy checklist](#deploy-checklist).
 
 ## Quick start (local)
 
@@ -16,6 +16,8 @@ npm run db:seed                 # 2 demo clients, 180 days of Meta + Google + Sh
 npm run dev                     # http://localhost:3000
 ```
 
+Sign in as `owner@northscale.local` with the local development password `northscale-dev` (set by `npm run db:seed`; set `OWNER_EMAIL` / `OWNER_PASSWORD` to choose your own).
+
 | Script                                  | What it does                                                                           |
 | --------------------------------------- | -------------------------------------------------------------------------------------- |
 | `npm run dev` / `build` / `start`       | Next.js                                                                                |
@@ -26,6 +28,8 @@ npm run dev                     # http://localhost:3000
 | `npm run db:seed`                       | (Re)generate demo data. Only touches `isDemo` clients.                                 |
 | `./scripts/dev-up.sh`                   | Start local Postgres (if stopped) and the dev server — handy after a container restart |
 | `npm run db:refresh-views`              | Refresh the materialized reporting views                                               |
+| `npm run owner:ensure`                  | Make sure the Owner can sign in (`OWNER_EMAIL`, `OWNER_PASSWORD`)                      |
+| `npm run watchdog [-- <slug>]`          | Run the Watchdog checks now                                                            |
 
 ## Architecture
 
@@ -53,7 +57,7 @@ Platform APIs ──► connectors (phase 3+) ──► normalized fact tables �
 
 Chosen for phase 3 because it is the simplest to run with this stack: no Redis or worker server to host, functions live inside the Next.js app as a route handler (works on Vercel), and it gives retries with backoff, cron schedules, per-connection concurrency limits and throttling (useful for Meta/Google rate limits) out of the box. Local dev uses the Inngest dev server (`npx inngest-cli dev`). BullMQ would need a separate always-on worker + Redis; Trigger.dev is comparable but adds a second deploy target.
 
-## Pages so far
+## Pages
 
 - **Data** — the reference layout: platform tabs, breakdown sub-tabs, expandable rows, totals, colour vs comparison / vs target, column chooser (saved per user), CSV.
 - **Dashboard** — KPI cards (choose & reorder, comparison + sparkline), trend chart with dashed comparison and clickable Chart Note markers (click the chart to add a note), spend by platform, revenue by channel (Shopify UTM attribution), platform-reported vs Shopify revenue, funnel with rates and costs, top 5 campaigns / creatives / products, month pacing. Drag & resize widgets with “Edit layout” (saved per user).
@@ -62,24 +66,51 @@ Chosen for phase 3 because it is the simplest to run with this stack: no Redis o
 - **Hive-Mind** — full-screen chat with the data (saved history, scope: all clients or one, Standard / Deep analysis model). See [Hive-Mind & AI Insights](#hive-mind--ai-insights).
 - **AI Insights** — daily / weekly cards per client: what changed, likely cause, recommended action, with feedback and “Turn into Chart Note”.
 - **Watchdog** — alert feed (severity, date, account, View data, Resolve, Mute), per-client rules, Slack / email notifications. See [Watchdog](#watchdog).
+- **Clients** — create / edit / archive clients (currency, timezone, margins, costs) with an onboarding checklist: connect ads → connect store → targets → client access.
+- **Team Members** — invite by link (emailed when Resend is configured), roles, which clients each Analyst sees, disable, password-reset links.
+- **Client Viewers** — read-only access for a client's people with per-page permissions, and public links with an expiry (revocable).
+- **Billing** — plan, clients / accounts / seats, Anthropic API cost per month, per client and per feature.
+- **Help** — metric glossary generated from `metrics.ts`, connection guides, FAQ.
 - **Targets** — monthly targets per client and per platform, pacing (progress, projection to month-end, status), breakeven calculator (AOV, margin, fixed costs, profit multiplier → breakeven and target ROAS/MER/CPA, can pull AOV and margin from Shopify), 12-month target vs actual history.
   - Breakeven with fixed costs: BE ROAS = (S + F) / (m·S), BE CPA = AOV·m·S / (S + F). The multiplier raises the ROAS target and lowers the CPA target.
 
-## Deploy (summary — expanded in phase 8)
+## Accounts, roles and security
 
-### Online preview with a password (Vercel + Supabase)
+- **Login** — email + password (scrypt hashes), sessions in an httpOnly cookie whose token is stored only as a SHA-256 hash (`sessions` table, 30 days), sign-in throttling (8 failures per email / 15 min), sign out, forgot-password emails (Resend) or admin-generated reset links, single-use invitation links (7 days). Implemented in-app (`src/server/auth.ts`) on the same Postgres — no extra auth service to run; the spec allowed Supabase Auth or an alternative.
+- **Roles** (`src/lib/permissions.ts`, enforced on every page, server action, API route and AI tool):
+  - **Owner** — everything, including other Owners/Admins. **Admin** — every client, Clients, Team (Analysts/Viewers), Client Viewers, Billing.
+  - **Analyst** — only assigned clients; all reporting pages, Sync, Hive-Mind; no Clients/Team/Viewers/Billing.
+  - **Client Viewer** — read-only, only their client(s) and the pages chosen for them (Dashboard, Data, Chart Notes, Targets, P&L without internal costs, AI Insights, Watchdog, Hive-Mind). Public links work the same way, except Hive-Mind is never available on them.
+- **Secrets** — API tokens AES-256-GCM encrypted (`ENCRYPTION_KEY`), never sent to the browser or logged; invite / reset / share tokens and API keys stored as hashes only.
+- `SITE_PASSWORD` (optional) adds an HTTP Basic password in front of everything — useful for a staging URL.
 
-Until login (phase 8) the whole site sits behind one password (`src/proxy.ts`, HTTP Basic auth; webhooks keep their own signature/key checks). Without `SITE_PASSWORD` a production deploy refuses to serve.
+## Deploy checklist
 
-1. **Supabase** → new project → _Connect_ → copy the **Session pooler** connection string (port 5432; works from Vercel, which has no IPv6).
-2. **Vercel** → _Add New → Project_ → import this GitHub repo. Environment variables: `DATABASE_URL` (step 1), `ENCRYPTION_KEY` (`openssl rand -hex 32`), `SITE_PASSWORD`, `APP_URL` (the Vercel URL, after the first deploy).
-3. Deploy. `npm run vercel-build` applies the migrations and, on an empty database, creates the demo clients (`SEED_DEMO_ON_DEPLOY=0` to skip), then builds. Every push to `main` redeploys.
+**1. Database — Supabase.** New project → _Connect_ → copy the **Session pooler** connection string (port 5432; works from Vercel, which has no IPv6) → `DATABASE_URL`.
 
-Mock connectors are refused in production; connecting real accounts needs the Meta / Google / Shopify app credentials below.
+**2. App — Vercel.** _Add New → Project_ → import this repo. Environment variables:
 
-- **Vercel**: import the repo, set the env vars from `.env.example`. `DATABASE_URL` must be available at **build** time too (the app shell is prerendered and reads the client list).
-- **Supabase**: create a project, use the pooled connection string for `DATABASE_URL`, run `npm run db:migrate`.
-- **Inngest** (phase 3): connect the Vercel project; schedules are defined in code.
+| Variable                                                           | Value                                                                                            |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                                                     | step 1 (needed at build time too)                                                                |
+| `ENCRYPTION_KEY`                                                   | `openssl rand -hex 32` — keep it safe; changing it means reconnecting accounts                   |
+| `OWNER_EMAIL`, `OWNER_PASSWORD`                                    | your sign-in (≥ 10 characters). Set once; you can remove `OWNER_PASSWORD` after the first deploy |
+| `APP_URL`                                                          | the production URL (links in emails, Slack, OAuth callbacks, Shopify webhooks)                   |
+| `RESEND_API_KEY`, `ALERT_EMAIL_FROM`                               | invitations, password resets, Watchdog emails (optional; without them you copy links by hand)    |
+| `ANTHROPIC_API_KEY` (+ `ANTHROPIC_MODEL`, `ANTHROPIC_MODEL_HEAVY`) | Hive-Mind and AI Insights                                                                        |
+| Meta / Google / Shopify app credentials                            | see [Connectors & sync](#connectors--sync)                                                       |
+
+`npm run vercel-build` applies the migrations, creates the demo clients on an empty database (`SEED_DEMO_ON_DEPLOY=0` to skip; turn **Demo data** off in the sidebar when you go live), sets the Owner from `OWNER_EMAIL`/`OWNER_PASSWORD`, then builds. Every push to `main` redeploys.
+
+**3. Jobs — Inngest.** Install the Inngest integration on the Vercel project (it adds `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`) and sync the app at `/api/inngest`. That turns on: hourly sync, daily re-sync of the last 7 days, daily Watchdog, daily and weekly AI Insights. Without Inngest, “Sync now”, “Run checks now” and “Generate now” still work (they run inline).
+
+**4. Platform apps** (once per agency, not per client):
+
+- **Meta** — a Meta app with Marketing API (`ads_read`, `business_management`); add `APP_URL/api/connect/meta/callback` as OAuth redirect; or use System User tokens.
+- **Google Ads** — developer token with Basic access + OAuth client; redirect `APP_URL/api/connect/google/callback`.
+- **Shopify** — per store: an Admin API token, or a Dev Dashboard app (client ID + secret), or OAuth app (`SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET`, redirect `APP_URL/api/connect/shopify/callback`).
+
+**5. Go live.** Sign in → **Clients → New client** → connect its accounts (Sync Status) → set targets → invite the team (**Team Members**) and, if you want, the client (**Client Viewers**). Mock modes (`*_MOCK`, `AI_MOCK`) are refused in production.
 
 ## Connectors & sync
 
@@ -214,7 +245,7 @@ Anthropic API with tool use (`@anthropic-ai/sdk`), called only from the server. 
 5. ✅ Shopify connector, Other Revenue, P&L, blended metrics
 6. ✅ Watchdog (alerts, rules per client, Slack / email)
 7. ✅ Hive-Mind + AI Insights
-8. Go-live: **login (Supabase Auth) with roles Owner / Admin / Analyst / Client Viewer enforced on every page, server action and AI tool**, Clients page (create clients + onboarding + connect accounts), Team Members, Client Viewers (incl. expiring public links), Billing, Help, final tests, and a **deploy checklist (Vercel + Supabase + Inngest + Meta/Google/Shopify apps)**. Until this phase the app has no login — run it locally only, never on a public URL.
+8. ✅ Go-live: login with roles Owner / Admin / Analyst / Client Viewer enforced on every page, action, API route and AI tool; Clients (onboarding), Team Members, Client Viewers (incl. expiring public links), Billing, Help, [deploy checklist](#deploy-checklist).
 
 ## Notes on versions
 

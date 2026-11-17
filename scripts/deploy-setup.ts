@@ -17,6 +17,7 @@ async function main() {
     console.log("Empty database: seeding demo clients…");
     run("npm run db:seed");
   } else console.log(`Database has ${clients} client(s): skipping the demo seed.`);
+  run("npx tsx scripts/ensure-owner.ts");
 }
 
 main().catch((e) => {

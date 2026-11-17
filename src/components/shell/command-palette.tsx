@@ -12,7 +12,7 @@ export interface PaletteClient {
 }
 
 /** ⌘K / Ctrl+K: jump to any page or switch client. */
-export function CommandPalette({ clients }: { clients: PaletteClient[] }) {
+export function CommandPalette({ clients, visible }: { clients: PaletteClient[]; visible?: string[] }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const sp = useSearchParams();
@@ -61,7 +61,7 @@ export function CommandPalette({ clients }: { clients: PaletteClient[] }) {
             <Command.List className="max-h-[50vh] overflow-auto p-1.5">
               <Command.Empty className="px-3 py-6 text-center text-xs text-muted">Nothing found.</Command.Empty>
               <Command.Group heading="Pages" className={group}>
-                {ALL_NAV.map((n) => (
+                {ALL_NAV.filter((n) => !visible || visible.includes(n.href)).map((n) => (
                   <Command.Item key={n.href} value={`page ${n.label}`} onSelect={() => go(n.href)} className={item}>
                     {n.label}
                   </Command.Item>

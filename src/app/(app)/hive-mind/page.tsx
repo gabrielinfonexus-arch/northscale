@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { HiveMind } from "@/components/ai/hive-mind";
 import { prisma } from "@/lib/db";
 import { toTurns } from "@/lib/ai-display";
-import { getCurrentUser } from "@/server/auth";
+import { requirePage } from "@/server/auth";
 import { listClients } from "@/server/clients";
 import { AI_MODEL, AI_MODEL_HEAVY, aiConfigured, aiMockEnabled } from "@/server/ai/config";
 import { SUGGESTIONS } from "@/server/ai/prompt";
@@ -24,7 +24,7 @@ function when(d: Date) {
 async function Content({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   await connection();
-  const [user, clients] = await Promise.all([getCurrentUser(), listClients()]);
+  const [user, clients] = await Promise.all([requirePage("hive-mind"), listClients()]);
   const conversations = await prisma.aiConversation.findMany({
     where: { userId: user.id },
     orderBy: { updatedAt: "desc" },

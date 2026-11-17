@@ -22,7 +22,7 @@ const ERRORS: Record<string, string> = {
 };
 
 async function Content({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "sync-status");
   const rows = await getConnectionStatuses();
   const now = snapshotTime();
   const error = typeof ctx.sp.error === "string" ? (ERRORS[ctx.sp.error] ?? ctx.sp.error) : null;

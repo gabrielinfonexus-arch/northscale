@@ -18,7 +18,7 @@ async function Picker({
   params: Promise<{ platform: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [{ platform }, ctx] = await Promise.all([params, getPageContext(searchParams)]);
+  const [{ platform }, ctx] = await Promise.all([params, getPageContext(searchParams, "connect")]);
   const credentialId = typeof ctx.sp.credential === "string" ? ctx.sp.credential : "";
   const name = { meta: "Meta", google: "Google Ads", shopify: "Shopify" }[platform] ?? platform;
   if (!PLATFORM_SLUG[platform] || !ctx.client || !credentialId)

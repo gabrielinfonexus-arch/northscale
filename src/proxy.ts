@@ -1,36 +1,43 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Site-wide password gate (HTTP Basic auth) until real login arrives in phase 8.
- * - SITE_PASSWORD set → every page and API asks for it (user name: anything, or SITE_USER if set).
- * - Unset in production → the site refuses to serve, so a deploy is never left open by accident.
- * - Unset in development → no gate (local work and tests).
+ * Runs before every route:
+ *  1. Optional extra gate: SITE_PASSWORD (HTTP Basic auth) in front of everything, e.g. while a staging URL is shared.
+ *  2. Signed-out visitors go to /login (API routes get 401). The session itself is validated on the server
+ *     (src/server/auth.ts); this only checks that a session cookie is present.
  * Webhooks and the Inngest endpoint are excluded: they verify their own signatures / keys.
  */
+const SESSION_COOKIE = "ns_session";
+const PUBLIC = [/^\/login$/, /^\/forgot$/, /^\/reset\/[^/]+$/, /^\/invite\/[^/]+$/, /^\/share\/[^/]+$/];
+
 export function proxy(req: NextRequest) {
   const password = process.env.SITE_PASSWORD;
-  if (!password) {
-    if (process.env.NODE_ENV === "production")
-      return new NextResponse("NorthScale is not open yet: set SITE_PASSWORD in the server environment.", { status: 503 });
-    return NextResponse.next();
+  if (password && !basicAuthOk(req.headers.get("authorization"), password))
+    return new NextResponse("Password required.", {
+      status: 401,
+      headers: { "WWW-Authenticate": 'Basic realm="NorthScale", charset="UTF-8"' },
+    });
+
+  const path = req.nextUrl.pathname;
+  if (PUBLIC.some((r) => r.test(path)) || req.cookies.has(SESSION_COOKIE)) return NextResponse.next();
+  if (path.startsWith("/api/")) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = path === "/" ? "" : `?next=${encodeURIComponent(path + req.nextUrl.search)}`;
+  return NextResponse.redirect(url);
+}
+
+function basicAuthOk(header: string | null, password: string) {
+  if (!header?.startsWith("Basic ")) return false;
+  try {
+    const decoded = atob(header.slice(6));
+    const i = decoded.indexOf(":");
+    if (i < 0) return false;
+    const userOk = !process.env.SITE_USER || safeEqual(decoded.slice(0, i), process.env.SITE_USER);
+    return safeEqual(decoded.slice(i + 1), password) && userOk;
+  } catch {
+    return false;
   }
-  const header = req.headers.get("authorization") ?? "";
-  if (header.startsWith("Basic ")) {
-    try {
-      const decoded = atob(header.slice(6));
-      const i = decoded.indexOf(":");
-      const user = decoded.slice(0, i);
-      const pass = decoded.slice(i + 1);
-      const userOk = !process.env.SITE_USER || safeEqual(user, process.env.SITE_USER);
-      if (i >= 0 && safeEqual(pass, password) && userOk) return NextResponse.next();
-    } catch {
-      // malformed header → ask again
-    }
-  }
-  return new NextResponse("Password required.", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="NorthScale", charset="UTF-8"' },
-  });
 }
 
 /** Constant-time string comparison. */

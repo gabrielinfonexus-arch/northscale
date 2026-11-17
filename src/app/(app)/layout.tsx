@@ -9,15 +9,41 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getCurrentUser } from "@/server/auth";
 import { getOrgSettings, listClients } from "@/server/clients";
 import { openCriticalCount } from "@/server/watchdog/queries";
+import { ALL_NAV } from "@/lib/nav";
+import { canSeePage } from "@/lib/permissions";
+import type { SessionUser } from "@/server/auth";
+
+const ROLE_LABEL = { OWNER: "Owner", ADMIN: "Admin", ANALYST: "Analyst", CLIENT_VIEWER: "Client viewer" } as const;
+const visibleHrefs = (u: SessionUser) => ALL_NAV.filter((n) => canSeePage(u, n.href.slice(1))).map((n) => n.href);
+
+async function navProps() {
+  const user = await getCurrentUser();
+  const visible = visibleHrefs(user);
+  const critical = visible.includes("/watchdog") ? await openCriticalCount() : 0;
+  return { visible, badges: { "/watchdog": critical } };
+}
 
 async function SidebarNavWithBadges() {
-  const critical = await openCriticalCount();
-  return <SidebarNav badges={{ "/watchdog": critical }} />;
+  return <SidebarNav {...await navProps()} />;
+}
+
+async function MobileNavLoader() {
+  return <MobileNav {...await navProps()} />;
 }
 
 async function SidebarFooterLoader() {
   const [user, settings] = await Promise.all([getCurrentUser(), getOrgSettings()]);
-  return <SidebarFooter demoData={settings?.demoData ?? true} canEdit={user.role === "OWNER" || user.role === "ADMIN"} />;
+  return (
+    <SidebarFooter
+      demoData={settings?.demoData ?? true}
+      canEdit={user.role === "OWNER" || user.role === "ADMIN"}
+      user={{
+        name: user.name || user.email || "Signed in",
+        detail: user.kind === "share" ? "Read-only link" : `${ROLE_LABEL[user.role]} · ${user.email}`,
+        isShare: user.kind === "share",
+      }}
+    />
+  );
 }
 
 async function TopBarSwitcher() {
@@ -26,8 +52,8 @@ async function TopBarSwitcher() {
 }
 
 async function Palette() {
-  const clients = await listClients();
-  return <CommandPalette clients={clients.map((c) => ({ slug: c.slug, name: c.name }))} />;
+  const [clients, user] = await Promise.all([listClients(), getCurrentUser()]);
+  return <CommandPalette clients={clients.map((c) => ({ slug: c.slug, name: c.name }))} visible={visibleHrefs(user)} />;
 }
 
 export default function AppLayout({ children }: LayoutProps<"/">) {
@@ -49,7 +75,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       <div className="flex min-w-0 flex-1 flex-col lg:pl-[200px]">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur lg:px-7">
           <Suspense fallback={null}>
-            <MobileNav />
+            <MobileNavLoader />
           </Suspense>
           <span className="text-[15px] font-semibold lg:hidden">NorthScale</span>
           <div className="ml-auto flex items-center gap-2">

@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 import { accessibleClientIds, type SessionUser } from "../auth";
+import { canSeePage } from "@/lib/permissions";
 import { getOrgSettings, listClients, type ClientSummary } from "../clients";
 import { AI_MODEL, AI_MODEL_HEAVY, addUsage, costUsd, ZERO_USAGE, type Usage } from "./config";
 import { scopeContext, STABLE_SYSTEM } from "./prompt";
@@ -30,7 +31,8 @@ const MAX_ROUNDS = 12;
 /** Clients this user may see, narrowed by the conversation scope. The AI never sees anything else. */
 export async function scopedClients(user: SessionUser, scope: ChatScope): Promise<ClientSummary[]> {
   const allowed = new Set(await accessibleClientIds(user));
-  const all = (await listClients()).filter((c) => allowed.has(c.id));
+  // Client Viewers: only the clients where Hive-Mind is one of their pages
+  const all = (await listClients()).filter((c) => allowed.has(c.id) && canSeePage(user, "hive-mind", c.id));
   return scope.clientIds?.length ? all.filter((c) => scope.clientIds!.includes(c.id)) : all;
 }
 

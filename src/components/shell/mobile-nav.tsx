@@ -4,7 +4,7 @@ import { Menu } from "lucide-react";
 import { Dialog, DialogTitle, DialogTrigger, SheetContent } from "@/components/ui/dialog";
 import { SidebarNav } from "./sidebar";
 
-export function MobileNav() {
+export function MobileNav({ visible, badges }: { visible?: string[]; badges?: Record<string, number> }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -13,7 +13,7 @@ export function MobileNav() {
       </DialogTrigger>
       <SheetContent aria-describedby={undefined}>
         <DialogTitle className="px-5 pb-4 pt-5 text-[15px] font-semibold">NorthScale</DialogTitle>
-        <SidebarNav onNavigate={() => setOpen(false)} />
+        <SidebarNav onNavigate={() => setOpen(false)} visible={visible} badges={badges} />
       </SheetContent>
     </Dialog>
   );

@@ -2,6 +2,8 @@ import "server-only";
 import { connection } from "next/server";
 import { parseFilters, type GlobalFilters, type SearchParams } from "@/lib/filters";
 import { todayInTz } from "@/lib/periods";
+import { redirect } from "next/navigation";
+import { canSeePage } from "@/lib/permissions";
 import { getCurrentUser, type SessionUser } from "./auth";
 import { getOrgSettings, resolveClient, type ClientSummary } from "./clients";
 
@@ -17,11 +19,21 @@ export interface PageContext {
   thresholdPct: number;
 }
 
-/** Everything a page needs from the URL, resolved against the user's permissions. */
-export async function getPageContext(searchParams: Promise<SearchParams>): Promise<PageContext> {
+/** Everything a page needs from the URL, resolved against the user's permissions (and, with `page`, the page permission). */
+export async function getPageContext(searchParams: Promise<SearchParams>, page?: string): Promise<PageContext> {
   const sp = await searchParams;
   const user = await getCurrentUser();
-  const { client, clients } = await resolveClient(typeof sp.client === "string" ? sp.client : null);
+  const resolved = await resolveClient(typeof sp.client === "string" ? sp.client : null);
+  const { clients } = resolved;
+  let client = resolved.client;
+  if (page) {
+    // Page permission (per client for Client Viewers): fall back to a client where the page is allowed, else refuse.
+    if (!canSeePage(user, page, client?.id)) {
+      const alt = clients.find((c) => canSeePage(user, page, c.id));
+      if (!alt) redirect(`/forbidden?page=${encodeURIComponent(page)}`);
+      client = alt;
+    }
+  }
   await connection(); // "today" depends on the request time
   const today = todayInTz(client?.timezone ?? "UTC");
   const filters = parseFilters(sp, today);

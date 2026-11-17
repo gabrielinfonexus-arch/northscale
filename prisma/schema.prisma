@@ -129,11 +129,17 @@ model OrgSetting {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  image     String?
-  createdAt DateTime @default(now())
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  image        String?
+  /// scrypt hash (never the password). Null until the user accepts an invite / sets a password.
+  passwordHash String?
+  disabledAt   DateTime?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  sessions Session[]
 
   memberships   Membership[]
   clientAccess  ClientAccess[]
@@ -172,11 +178,65 @@ model ShareLink {
   id           String    @id @default(cuid())
   clientId     String
   tokenHash    String    @unique
+  label        String?
   allowedPages String[]
   expiresAt    DateTime?
+  revokedAt    DateTime?
+  createdById  String?
+  lastUsedAt   DateTime?
   createdAt    DateTime  @default(now())
   client       Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sessions     Session[]
   @@map("share_links")
+}
+
+/// Login session. The cookie holds a random token; only its SHA-256 is stored.
+model Session {
+  id          String     @id @default(cuid())
+  tokenHash   String     @unique
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// public read-only link sessions (Client Viewers)
+  shareLinkId String?
+  shareLink   ShareLink? @relation(fields: [shareLinkId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  lastSeenAt  DateTime   @default(now())
+  userAgent   String?
+  createdAt   DateTime   @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// One-time links: invitations (team members, client viewers) and password resets. Only the hash is stored.
+model AuthToken {
+  id             String    @id @default(cuid())
+  kind           String // invite | reset
+  tokenHash      String    @unique
+  email          String
+  organizationId String
+  role           Role?
+  clientIds      String[]  @default([])
+  allowedPages   String[]  @default([])
+  createdById    String?
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, kind])
+  @@map("auth_tokens")
+}
+
+/// Failed / successful sign-ins, for throttling brute force.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String?
+  ok        Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@map("login_attempts")
 }
 
 model UserPreference {

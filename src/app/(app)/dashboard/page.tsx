@@ -29,7 +29,7 @@ function DashboardSkeleton() {
 }
 
 async function DashboardContent({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "dashboard");
   const { client, filters } = ctx;
   if (!client) {
     return (

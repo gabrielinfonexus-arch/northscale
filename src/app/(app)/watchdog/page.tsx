@@ -97,7 +97,7 @@ function toFeed(rows: AlertRow[], tz: string): FeedRow[] {
 }
 
 async function Content({ searchParams }: { searchParams: Promise<SP> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "watchdog");
   const sp = ctx.sp;
   const view = (VIEWS.find((v) => v.id === str(sp.view))?.id ?? "feed") as (typeof VIEWS)[number]["id"];
   const canEdit = ctx.user.role !== "CLIENT_VIEWER";

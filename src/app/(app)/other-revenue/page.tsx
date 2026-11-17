@@ -11,7 +11,7 @@ import { listOtherRevenue } from "@/server/other-revenue";
 export const metadata: Metadata = { title: "Other Revenue" };
 
 async function Content({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "other-revenue");
   if (!ctx.client)
     return (
       <>

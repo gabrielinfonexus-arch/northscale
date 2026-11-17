@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getCurrentUser } from "@/server/auth";
+import { canSeePage } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { runChat, scopedClients, type ChatEvent } from "@/server/ai/chat";
 import { aiConfigured } from "@/server/ai/config";
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return Response.json({ error: "Invalid request" }, { status: 400 });
   if (!aiConfigured()) return Response.json({ error: "Set ANTHROPIC_API_KEY to use Hive-Mind." }, { status: 503 });
   const user = await getCurrentUser();
+  if (user.kind !== "user" || !canSeePage(user, "hive-mind")) return Response.json({ error: "Forbidden" }, { status: 403 });
   const b = parsed.data;
 
   let conversationId = b.conversationId;

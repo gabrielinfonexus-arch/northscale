@@ -17,11 +17,12 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "db:seed": "tsx prisma/seed/index.ts && npm run watchdog",
+    "db:seed": "tsx prisma/seed/index.ts && tsx scripts/ensure-owner.ts && npm run watchdog",
     "db:refresh-views": "tsx scripts/refresh-views.ts",
     "postinstall": "prisma generate",
     "client:create": "tsx scripts/create-client.ts",
-    "watchdog": "tsx --conditions=react-server scripts/watchdog-run.ts"
+    "watchdog": "tsx --conditions=react-server scripts/watchdog-run.ts",
+    "owner:ensure": "tsx scripts/ensure-owner.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.9.0",

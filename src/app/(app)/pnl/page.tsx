@@ -15,7 +15,7 @@ import { getCostItems, getCostSettings, getPnl, getProductCosts } from "@/server
 export const metadata: Metadata = { title: "P&L" };
 
 async function Content({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "pnl");
   const { client, filters } = ctx;
   if (!client)
     return (
@@ -24,7 +24,9 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
         <EmptyState title="No clients yet">Add a client first.</EmptyState>
       </>
     );
-  const view = ctx.sp.view === "costs" ? "costs" : "pnl";
+  // internal costs are never shown to Client Viewers
+  const staff = ctx.user.role !== "CLIENT_VIEWER";
+  const view = ctx.sp.view === "costs" && staff ? "costs" : "pnl";
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(ctx.sp)) if (typeof v === "string") sp.set(k, v);
   const base = pickGlobalParams(sp);
@@ -35,10 +37,7 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
   };
   const tabs = (
     <nav className="mb-4 flex gap-1 border-b border-border" aria-label="P&L views">
-      {[
-        ["pnl", "Profit & loss"],
-        ["costs", "Costs"],
-      ].map(([v, label]) => (
+      {[["pnl", "Profit & loss"], ...(staff ? [["costs", "Costs"]] : [])].map(([v, label]) => (
         <Link
           key={v}
           href={tabHref(v)}

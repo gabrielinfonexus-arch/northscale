@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { getSyncOverview } from "@/server/sync-status";
+import { requirePage } from "@/server/auth";
 
 export const metadata: Metadata = { title: "Sync Overview" };
 
@@ -36,6 +37,7 @@ function duration(a: string | null, b: string | null) {
 const fmtTime = (iso: string) => new Date(iso).toISOString().slice(5, 16).replace("T", " ");
 
 async function Content() {
+  await requirePage("sync-overview");
   await connection();
   const o = await getSyncOverview(14);
   return (

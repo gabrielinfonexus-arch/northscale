@@ -15,7 +15,7 @@ const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 } as Record<string, number>;
 const day = (d: Date | null) => (d ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(d) : "");
 
 async function Content({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "ai-insights");
   const canEdit = ctx.user.role !== "CLIENT_VIEWER";
   const configured = aiConfigured();
   const header = (

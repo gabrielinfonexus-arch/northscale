@@ -11,6 +11,7 @@ export async function savePreference(key: string, value: unknown) {
     .regex(/^[a-zA-Z0-9_.:-]{1,120}$/)
     .parse(key);
   const user = await getCurrentUser();
+  if (user.kind !== "user") return; // public links have no account to remember preferences
   await prisma.userPreference.upsert({
     where: { userId_key: { userId: user.id, key: k } },
     update: { value: value as never },

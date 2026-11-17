@@ -10,7 +10,7 @@ import { getNotes } from "@/server/notes";
 export const metadata: Metadata = { title: "Chart Notes" };
 
 async function NotesContent({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const ctx = await getPageContext(searchParams);
+  const ctx = await getPageContext(searchParams, "chart-notes");
   if (!ctx.client) {
     return (
       <>
