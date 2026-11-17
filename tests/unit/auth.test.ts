@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { canSeePage, type PageAccessUser } from "@/lib/permissions";
 import { hashPassword, passwordProblem, verifyPassword } from "@/server/password-core";
 
-const u = (role: PageAccessUser["role"], kind: PageAccessUser["kind"] = "user", viewerPages: PageAccessUser["viewerPages"] = null): PageAccessUser => ({ role, kind, viewerPages });
+const u = (
+  role: PageAccessUser["role"],
+  kind: PageAccessUser["kind"] = "user",
+  viewerPages: PageAccessUser["viewerPages"] = null,
+): PageAccessUser => ({ role, kind, viewerPages });
 
 describe("page permissions", () => {
   it("owners and admins see everything", () => {
