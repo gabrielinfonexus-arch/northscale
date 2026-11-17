@@ -6,8 +6,8 @@
 CREATE OR REPLACE FUNCTION fx_factor(p_base text, p_quote text, p_d date)
 RETURNS double precision LANGUAGE sql STABLE AS $$
   SELECT CASE WHEN p_base = p_quote THEN 1.0 ELSE COALESCE(
-    (SELECT r.rate FROM fx_rates r WHERE r.base = p_base AND r.quote = p_quote AND r.date <= p_d ORDER BY r.date DESC LIMIT 1),
-    (SELECT 1.0 / r.rate FROM fx_rates r WHERE r.base = p_quote AND r.quote = p_base AND r.date <= p_d ORDER BY r.date DESC LIMIT 1),
+    (SELECT r.rate FROM public.fx_rates r WHERE r.base = p_base AND r.quote = p_quote AND r.date <= p_d ORDER BY r.date DESC LIMIT 1),
+    (SELECT 1.0 / r.rate FROM public.fx_rates r WHERE r.base = p_quote AND r.quote = p_base AND r.date <= p_d ORDER BY r.date DESC LIMIT 1),
     1.0) END
 $$;
 
