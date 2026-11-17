@@ -6,6 +6,7 @@ import { addDays, chunkRange, todayInTz, type DateRange } from "@/lib/periods";
 import { getConnector, hasConnector } from "../connectors/registry";
 import { ConnectorError, type ConnectorContext } from "../connectors/types";
 import { refreshReportingViews } from "./writer";
+import { runWatchdogSafe } from "../watchdog/run";
 
 /**
  * - BACKFILL: 13 months, in 31-day chunks (newest first)
@@ -61,6 +62,8 @@ export async function createJob(req: SyncRequest) {
 export interface RunOptions {
   /** rethrow retryable errors so the queue retries with backoff */
   throwRetryable?: boolean;
+  /** skip the Watchdog run after the sync (tests, bulk backfills) */
+  skipWatchdog?: boolean;
 }
 
 export async function runSync(
@@ -102,6 +105,8 @@ export async function runSync(
         ...(req.kind === "BACKFILL" && status === "SUCCESS" ? { backfillProgress: 1 } : {}),
       },
     });
+    // Watchdog runs on every sync (success or failure); it never throws.
+    if (!opts.skipWatchdog) await runWatchdogSafe(conn.clientId);
     return { jobId, status, rows };
   };
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { Inngest } from "inngest";
 import { runSync, schedulableConnections, type SyncRequest } from "../sync/engine";
+import { runWatchdogAll } from "../watchdog/run";
 
 export const inngest = new Inngest({ id: "northscale" });
 
@@ -43,4 +44,13 @@ export const dailyResync = inngest.createFunction({ id: "daily-resync", triggers
   return { connections: conns.length };
 });
 
-export const functions = [syncConnection, hourlySync, dailyResync];
+/** Daily: Watchdog checks for every client, including those whose data only arrives by webhook (Shopify, Other Revenue). */
+export const dailyWatchdog = inngest.createFunction(
+  { id: "daily-watchdog", triggers: [{ cron: "TZ=UTC 41 10 * * *" }] },
+  async ({ step }) => {
+    const results = await step.run("run-watchdog", () => runWatchdogAll());
+    return { clients: results.length };
+  },
+);
+
+export const functions = [syncConnection, hourlySync, dailyResync, dailyWatchdog];

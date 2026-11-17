@@ -8,6 +8,12 @@ import { CommandPalette } from "@/components/shell/command-palette";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getCurrentUser } from "@/server/auth";
 import { getOrgSettings, listClients } from "@/server/clients";
+import { openCriticalCount } from "@/server/watchdog/queries";
+
+async function SidebarNavWithBadges() {
+  const critical = await openCriticalCount();
+  return <SidebarNav badges={{ "/watchdog": critical }} />;
+}
 
 async function SidebarFooterLoader() {
   const [user, settings] = await Promise.all([getCurrentUser(), getOrgSettings()]);
@@ -33,7 +39,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         </Link>
         <div className="scroll-thin flex-1 overflow-y-auto">
           <Suspense fallback={<NavList />}>
-            <SidebarNav />
+            <SidebarNavWithBadges />
           </Suspense>
         </div>
         <Suspense fallback={<div className="h-[76px] border-t border-border" />}>

@@ -130,7 +130,7 @@ test("audience types warns when New share is low", async ({ page }) => {
 });
 
 test("placeholder pages and mobile drawer", async ({ page }) => {
-  await page.goto("/watchdog");
+  await page.goto("/hive-mind");
   await expect(page.getByText(/arrives in phase \d/)).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/data");

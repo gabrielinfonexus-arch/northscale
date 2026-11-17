@@ -119,6 +119,10 @@ model OrgSetting {
   organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   demoData               Boolean      @default(true)
   comparisonThresholdPct Float        @default(2) // ± % below which comparison is grey
+  /// Watchdog notifications
+  slackWebhookEncrypted  String?
+  alertEmails            String[]     @default([])
+  alertMinSeverity       String       @default("WARNING") // CRITICAL | WARNING | INFO
   plan                   String       @default("internal")
   updatedAt              DateTime     @updatedAt
   @@map("org_settings")
@@ -634,7 +638,12 @@ model Alert {
   dataLink     String? // relative URL to the Data page with filters
   fingerprint  String // dedupe key
   mutedUntil   DateTime?
+  data         Json? // supporting numbers (also given to the AI)
+  autoResolved Boolean       @default(false)
+  notifiedAt   DateTime?
+  lastSeenAt   DateTime      @default(now())
   createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @default(now()) @updatedAt
   resolvedAt   DateTime?
 
   @@unique([clientId, fingerprint])

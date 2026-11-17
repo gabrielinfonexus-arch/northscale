@@ -59,6 +59,7 @@ Chosen for phase 3 because it is the simplest to run with this stack: no Redis o
 - **Dashboard** — KPI cards (choose & reorder, comparison + sparkline), trend chart with dashed comparison and clickable Chart Note markers (click the chart to add a note), spend by platform, revenue by channel (Shopify UTM attribution), platform-reported vs Shopify revenue, funnel with rates and costs, top 5 campaigns / creatives / products, month pacing. Drag & resize widgets with “Edit layout” (saved per user).
   - Two metrics on the trend chart share one axis when they have the same unit; otherwise they render as two stacked, synced panels (no dual-axis charts — they are easy to misread).
 - **Chart Notes** — per-client annotations with categories/colours; shown on every time chart and available to the AI (phase 7).
+- **Watchdog** — alert feed (severity, date, account, View data, Resolve, Mute), per-client rules, Slack / email notifications. See [Watchdog](#watchdog).
 - **Targets** — monthly targets per client and per platform, pacing (progress, projection to month-end, status), breakeven calculator (AOV, margin, fixed costs, profit multiplier → breakeven and target ROAS/MER/CPA, can pull AOV and margin from Shopify), 12-month target vs actual history.
   - Breakeven with fixed costs: BE ROAS = (S + F) / (m·S), BE CPA = AOV·m·S / (S + F). The multiplier raises the ROAS target and lowers the CPA target.
 
@@ -152,6 +153,30 @@ Per client, by day / week / month / year, with comparison and a waterfall:
 
 **P&L → Costs**: shipping cost per order and/or % of net sales, payment fee %, default margin for products without cost, other costs (fixed per month — spread per day —, per order, or % of net sales, with optional start/end dates) and **COGS per product** overrides (recomputes stored COGS so every screen agrees, and survives re-syncs). The same cost model (`src/lib/pnl.ts`) feeds the Dashboard and Data “Contribution margin”, “Net profit” and margin % metrics.
 
+### Watchdog
+
+Automatic, **read-only** monitoring (it never pauses or edits anything in an ad account). Checks run at the end of every sync (success or failure), once a day for every client (Inngest `daily-watchdog`, covers webhook-only data), and on demand (“Run checks now”, or `npm run watchdog [-- <client-slug>]`).
+
+Rules (`src/lib/watchdog/rules.ts`, pure and unit-tested; every threshold editable per client in **Watchdog → Rules**, targets come from **Targets**):
+
+| Rule | Default |
+| --- | --- |
+| CPA above target | Platform CPA over the last 3 days > target +20% (critical at 1.5×), min spend 100 |
+| ROAS / MER below target or dropping | Below the monthly target, or −20% vs the previous 7-day average (platforms + blended MER) |
+| Spend pacing | Projected month-end spend outside budget ±10% (from day 3) |
+| Account stopped spending / account problem | Yesterday < 10% of a normal (≥ 50/day) spend; or the platform reports the account as disabled / unsettled |
+| Rejected ad | Disapproved / limited ads (Meta review feedback, Google policy summary) |
+| High frequency in prospecting | Meta prospecting campaigns with 7-day frequency > 2.5 |
+| Tracking looks broken | Platform purchases collapse while Shopify orders hold (or the opposite), or the platform-vs-Shopify gap moves far from normal |
+| Funnel diagnosis | CPA up: CPC / cost per add-to-cart also up → traffic got expensive (warning); stable → conversion issue, hold (info) |
+| Ad to cut | CPA ≥ 2× target after spending ≥ 2× target CPA (14 days) |
+| Winning ad | ≥ 5% of spend over 14 days and above target ROAS (info) |
+| Sync failed / token expired | Sync errors, revoked tokens, data older than 24 h, token expiring within 7 days (demo connections ignored) |
+
+**Alert lifecycle** — de-duplicated by fingerprint (one alert per condition, numbers refreshed on each check). Alerts whose condition clears are resolved automatically (“Cleared automatically”). **Resolve** acknowledges an alert: it stays resolved while the condition persists and reopens only if it gets worse, or clears and comes back. **Mute for 1/3/7/14 days** silences it; it reopens afterwards if still true. Each alert has a **View data** link that opens Data on the right platform, tab, period and account. The sidebar shows the number of open critical alerts.
+
+**Notifications** (Watchdog → Notifications, owners/admins): Slack incoming webhook (stored encrypted, shown redacted) and/or email via [Resend](https://resend.com) (`RESEND_API_KEY`, `ALERT_EMAIL_FROM`). Sent once when an alert opens, reopens or escalates, at or above the minimum severity; each rule can turn email/Slack off. “Send test” checks the setup. `APP_URL` makes the links in notifications absolute.
+
 ## Roadmap
 
 1. ✅ Base: layout, schema, `metrics.ts`, demo seed, Data page, colour rule
@@ -159,7 +184,7 @@ Per client, by day / week / month / year, with comparison and a waterfall:
 3. ✅ Meta connector (+ Sync Status / Sync Overview)
 4. ✅ Google Ads connector
 5. ✅ Shopify connector, Other Revenue, P&L, blended metrics
-6. Watchdog
+6. ✅ Watchdog (alerts, rules per client, Slack / email)
 7. Hive-Mind + AI Insights
 8. Go-live: **login (Supabase Auth) with roles Owner / Admin / Analyst / Client Viewer enforced on every page, server action and AI tool**, Clients page (create clients + onboarding + connect accounts), Team Members, Client Viewers (incl. expiring public links), Billing, Help, final tests, and a **deploy checklist (Vercel + Supabase + Inngest + Meta/Google/Shopify apps)**. Until this phase the app has no login — run it locally only, never on a public URL.
 

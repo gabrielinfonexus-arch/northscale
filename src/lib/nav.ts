@@ -83,4 +83,4 @@ export const NAV: { group: string; items: NavItem[] }[] = [
 export const ALL_NAV = NAV.flatMap((g) => g.items);
 
 /** Pages with phase <= CURRENT_PHASE are implemented; the rest render a placeholder. */
-export const CURRENT_PHASE = 5;
+export const CURRENT_PHASE = 6;

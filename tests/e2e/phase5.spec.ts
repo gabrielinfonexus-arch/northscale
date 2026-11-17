@@ -54,13 +54,11 @@ test("Other Revenue: manual entry, CSV import and webhook key", async ({ page })
   // CSV with Portuguese headers and BR numbers
   const day = await page.locator('input[type="date"]').first().inputValue();
   const [y, m, d] = day.split("-");
-  await page
-    .getByLabel("CSV file")
-    .setInputFiles({
-      name: "receitas.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from(`Data;Fonte;Receita;Pedidos\n${d}/${m}/${y};${source}-csv;2.000,00;4\nxx;bad;1;1\n`),
-    });
+  await page.getByLabel("CSV file").setInputFiles({
+    name: "receitas.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(`Data;Fonte;Receita;Pedidos\n${d}/${m}/${y};${source}-csv;2.000,00;4\nxx;bad;1;1\n`),
+  });
   await expect(page.getByTestId("csv-preview")).toContainText("1 valid rows, 1 with errors");
   await page.getByTestId("csv-import").click();
   await expect(page.getByTestId("or-entries")).toContainText(`${source}-csv`);
