@@ -4,7 +4,7 @@ import { execSync } from "node:child_process";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 
-const run = (cmd: string, env: NodeJS.ProcessEnv = {}) => execSync(cmd, { stdio: "inherit", env: { ...process.env, ...env } });
+const run = (cmd: string, env: Record<string, string> = {}) => execSync(cmd, { stdio: "inherit", env: { ...process.env, ...env } });
 
 /**
  * Migrations that were fixed after failing on some databases and are safe to re-run from the start
