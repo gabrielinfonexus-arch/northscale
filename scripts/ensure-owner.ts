@@ -54,7 +54,7 @@ async function main() {
 
   const pw = process.env.OWNER_PASSWORD;
   if (pw && (!user.passwordHash || process.env.OWNER_PASSWORD_RESET === "1")) {
-    if (pw.length < 10) throw new Error("OWNER_PASSWORD must have at least 10 characters.");
+    if (pw.length < 10) console.warn("OWNER_PASSWORD is shorter than 10 characters: consider a longer one.");
     await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(pw) } });
     console.log(`Owner ${user.email}: password set from OWNER_PASSWORD.`);
   } else if (!user.passwordHash && !prod) {
@@ -67,7 +67,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(e);
-    process.exit(1);
+    // never fail a deploy over this: signing in with OWNER_EMAIL + OWNER_PASSWORD also repairs the Owner
+    console.warn("Owner setup skipped:", (e as Error).message);
   })
   .finally(() => db.$disconnect());

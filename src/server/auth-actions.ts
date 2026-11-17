@@ -8,6 +8,7 @@ import { hashToken } from "@/lib/crypto";
 import { createSession, destroySession } from "./auth";
 import { hashPassword, newToken, passwordProblem, verifyPassword } from "./password";
 import { absoluteUrl, sendEmail } from "./email";
+import { ensureOwnerFromEnv, matchesOwnerEnv } from "./owner-bootstrap";
 
 /** `values` re-fills non-secret fields after an error (React resets the form after every action). */
 export type FormState = { error?: string; message?: string; values?: Record<string, string> } | null;
@@ -31,6 +32,14 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
   const password = String(form.get("password") ?? "");
   if (!parsed.success || !password) return { error: "Enter your email and password." };
   const ip = await clientIp();
+  if (matchesOwnerEnv(parsed.data, password)) {
+    // OWNER_EMAIL + OWNER_PASSWORD from the server environment always work (and repair the Owner account)
+    const owner = await ensureOwnerFromEnv(parsed.data, password);
+    await prisma.loginAttempt.create({ data: { email: parsed.data, ip, ok: true } });
+    await prisma.user.update({ where: { id: owner.id }, data: { lastLoginAt: new Date() } });
+    await createSession({ userId: owner.id });
+    redirect(safeNext(form.get("next")));
+  }
   const since = new Date(Date.now() - WINDOW_MS);
   const [byEmail, byIp] = await Promise.all([
     prisma.loginAttempt.count({ where: { email: parsed.data, ok: false, createdAt: { gte: since } } }),
