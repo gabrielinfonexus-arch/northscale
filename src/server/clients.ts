@@ -74,3 +74,8 @@ export async function getOrgSettings() {
   const user = await getCurrentUser();
   return prisma.orgSetting.findUnique({ where: { organizationId: user.organizationId } });
 }
+
+/** For background jobs (no signed-in user): load clients by id. Callers must already be authorized. */
+export async function listClientsForJob(ids: string[]): Promise<ClientSummary[]> {
+  return loadClients(ids);
+}

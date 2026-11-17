@@ -2,6 +2,7 @@ import "server-only";
 import { Inngest } from "inngest";
 import { runSync, schedulableConnections, type SyncRequest } from "../sync/engine";
 import { runWatchdogAll } from "../watchdog/run";
+import { generateInsights, insightClientIds } from "../ai/insights";
 
 export const inngest = new Inngest({ id: "northscale" });
 
@@ -53,4 +54,37 @@ export const dailyWatchdog = inngest.createFunction(
   },
 );
 
-export const functions = [syncConnection, hourlySync, dailyResync, dailyWatchdog];
+/** AI Insights: every morning (after the daily re-sync and Watchdog) and a weekly summary on Mondays — one event per client. */
+export const INSIGHTS_EVENT = "ai/insights.requested";
+async function fanOutInsights(
+  cadence: "daily" | "weekly",
+  step: {
+    run: <T>(id: string, fn: () => Promise<T>) => Promise<unknown>;
+    sendEvent: (id: string, e: { name: string; data: object }[]) => Promise<unknown>;
+  },
+) {
+  const ids = (await step.run("list-clients", () => insightClientIds())) as string[];
+  if (ids.length)
+    await step.sendEvent(
+      "fan-out",
+      ids.map((clientId) => ({ name: INSIGHTS_EVENT, data: { clientId, cadence } })),
+    );
+  return { clients: ids.length };
+}
+export const dailyInsights = inngest.createFunction(
+  { id: "daily-ai-insights", triggers: [{ cron: "TZ=UTC 17 11 * * *" }] },
+  async ({ step }) => fanOutInsights("daily", step as never),
+);
+export const weeklyInsights = inngest.createFunction(
+  { id: "weekly-ai-insights", triggers: [{ cron: "TZ=UTC 47 11 * * 1" }] },
+  async ({ step }) => fanOutInsights("weekly", step as never),
+);
+export const clientInsights = inngest.createFunction(
+  { id: "client-ai-insights", triggers: [{ event: INSIGHTS_EVENT }], concurrency: [{ limit: 3 }], retries: 2 },
+  async ({ event, step }) => {
+    const d = event.data as { clientId: string; cadence: "daily" | "weekly" };
+    return step.run("generate", () => generateInsights(d.clientId, d.cadence));
+  },
+);
+
+export const functions = [syncConnection, hourlySync, dailyResync, dailyWatchdog, dailyInsights, weeklyInsights, clientInsights];

@@ -59,6 +59,8 @@ Chosen for phase 3 because it is the simplest to run with this stack: no Redis o
 - **Dashboard** — KPI cards (choose & reorder, comparison + sparkline), trend chart with dashed comparison and clickable Chart Note markers (click the chart to add a note), spend by platform, revenue by channel (Shopify UTM attribution), platform-reported vs Shopify revenue, funnel with rates and costs, top 5 campaigns / creatives / products, month pacing. Drag & resize widgets with “Edit layout” (saved per user).
   - Two metrics on the trend chart share one axis when they have the same unit; otherwise they render as two stacked, synced panels (no dual-axis charts — they are easy to misread).
 - **Chart Notes** — per-client annotations with categories/colours; shown on every time chart and available to the AI (phase 7).
+- **Hive-Mind** — full-screen chat with the data (saved history, scope: all clients or one, Standard / Deep analysis model). See [Hive-Mind & AI Insights](#hive-mind--ai-insights).
+- **AI Insights** — daily / weekly cards per client: what changed, likely cause, recommended action, with feedback and “Turn into Chart Note”.
 - **Watchdog** — alert feed (severity, date, account, View data, Resolve, Mute), per-client rules, Slack / email notifications. See [Watchdog](#watchdog).
 - **Targets** — monthly targets per client and per platform, pacing (progress, projection to month-end, status), breakeven calculator (AOV, margin, fixed costs, profit multiplier → breakeven and target ROAS/MER/CPA, can pull AOV and margin from Shopify), 12-month target vs actual history.
   - Breakeven with fixed costs: BE ROAS = (S + F) / (m·S), BE CPA = AOV·m·S / (S + F). The multiplier raises the ROAS target and lowers the CPA target.
@@ -187,6 +189,22 @@ Rules (`src/lib/watchdog/rules.ts`, pure and unit-tested; every threshold editab
 
 **Notifications** (Watchdog → Notifications, owners/admins): Slack incoming webhook (stored encrypted, shown redacted) and/or email via [Resend](https://resend.com) (`RESEND_API_KEY`, `ALERT_EMAIL_FROM`). Sent once when an alert opens, reopens or escalates, at or above the minimum severity; each rule can turn email/Slack off. “Send test” checks the setup. `APP_URL` makes the links in notifications absolute.
 
+### Hive-Mind & AI Insights
+
+Anthropic API with tool use (`@anthropic-ai/sdk`), called only from the server. `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`) answers everyday questions and writes insights; `ANTHROPIC_MODEL_HEAVY` (default `claude-opus-5-5`) is used when a conversation is switched to **Deep analysis**. Server-side refusal fallback is on (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`): if a safety classifier declines, the API retries on a fallback model in the same call.
+
+**Read-only tools** (`src/server/ai/tools.ts`) — `list_clients_and_accounts`, `get_metrics`, `compare_periods`, `get_breakdown` (age, gender, placement, country, hour, day of week, audience type, device), `get_top_entities` (campaigns, ad sets, ads, creatives with Winner/Watch/Cut, keywords, search terms, products), `get_shopify_summary`, `get_pnl`, `get_targets_and_pacing`, `get_alerts`, `get_chart_notes`, and `run_readonly_sql` as a last resort. They reuse the Data page / P&L / Targets queries and `metrics.ts`, so the AI and the screens always agree, and return “—” with the reason when a platform doesn't provide a metric.
+
+**Permissions** — every tool only sees the clients the signed-in user may see (`accessibleClientIds`), narrowed by the conversation scope. `run_readonly_sql` runs one `SELECT` per call in a transaction that is always rolled back: it creates temporary `ai_*` views already filtered to those clients, switches to the no-login role `northscale_ai_ro` (no table privileges), sets `READ ONLY` and a 5 s timeout, returns at most 200 rows. Nothing can write anywhere, and nothing ever reaches the ad platforms.
+
+**Chat** — streamed (Server-Sent Events from `POST /api/ai/chat`), history saved per user (`ai_conversations` / `ai_messages`, raw content blocks replayed unchanged), tool calls shown collapsed, Markdown tables and inline charts (the model emits a ` ```chart ` JSON block, drawn with Recharts), clickable example questions.
+
+**AI Insights** — Inngest `daily-ai-insights` (every morning: last 7 days vs the 7 before) and `weekly-ai-insights` (Mondays: last full week vs the one before) fan out one job per client; “Generate now” runs on demand. A data pack built with the same tools (≈10k tokens per client) goes to the model, which returns 3–6 cards as structured output (priority, what changed, likely cause, action, supporting metrics, Data link). Cards have “Useful / Not useful” and “Turn into Chart Note”.
+
+**Cost** — every call's tokens (incl. cache reads/writes) and USD cost are stored in `ai_usage` per client and feature (for Billing in phase 8). The system prompt is cached (prompt caching). Rough order: an insight run ≈ US$0.05 per client on Sonnet 5.5; a chat question ≈ US$0.02–0.10 depending on how many tools it calls.
+
+**Local without an API key** — `AI_MOCK=1` swaps the API for a scripted model that calls real tools and draws a real table + chart (used by the e2e tests; refused in production).
+
 ## Roadmap
 
 1. ✅ Base: layout, schema, `metrics.ts`, demo seed, Data page, colour rule
@@ -195,7 +213,7 @@ Rules (`src/lib/watchdog/rules.ts`, pure and unit-tested; every threshold editab
 4. ✅ Google Ads connector
 5. ✅ Shopify connector, Other Revenue, P&L, blended metrics
 6. ✅ Watchdog (alerts, rules per client, Slack / email)
-7. Hive-Mind + AI Insights
+7. ✅ Hive-Mind + AI Insights
 8. Go-live: **login (Supabase Auth) with roles Owner / Admin / Analyst / Client Viewer enforced on every page, server action and AI tool**, Clients page (create clients + onboarding + connect accounts), Team Members, Client Viewers (incl. expiring public links), Billing, Help, final tests, and a **deploy checklist (Vercel + Supabase + Inngest + Meta/Google/Shopify apps)**. Until this phase the app has no login — run it locally only, never on a public URL.
 
 ## Notes on versions

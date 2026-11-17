@@ -659,6 +659,7 @@ model AiConversation {
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   scope     Json // { clientIds: [...], connectionIds: [...] } or { all: true }
+  heavy     Boolean     @default(false) // use ANTHROPIC_MODEL_HEAVY
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   messages  AiMessage[]
@@ -669,9 +670,12 @@ model AiMessage {
   id             String         @id @default(cuid())
   conversationId String
   conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           String
+  role           String // user | assistant (raw Anthropic content blocks, replayed unchanged)
   content        Json
+  model          String?
+  usage          Json?
   createdAt      DateTime       @default(now())
+  @@index([conversationId, createdAt])
   @@map("ai_messages")
 }
 
@@ -688,23 +692,33 @@ model AiInsight {
   metrics     Json
   dataLink    String?
   feedback    String? // useful | not_useful
+  periodFrom  DateTime? @db.Date
+  periodTo    DateTime? @db.Date
+  noteId      String? // Chart Note created from this insight
+  runId       String? // insights generated together
+  model       String?
   createdAt   DateTime @default(now())
 
   @@index([clientId, createdAt])
   @@map("ai_insights")
 }
 
+/// Anthropic API token consumption (Billing: AI cost per month and per client).
 model AiUsage {
-  id           String   @id @default(cuid())
-  clientId     String?
-  userId       String?
-  feature      String // hive_mind | insights
-  model        String
-  inputTokens  Int
-  outputTokens Int
-  costUsd      Float
-  createdAt    DateTime @default(now())
+  id               String   @id @default(cuid())
+  organizationId   String?
+  clientId         String? // null = a Hive-Mind turn across several clients
+  userId           String?
+  feature          String // hive_mind | insights
+  model            String
+  inputTokens      Int
+  outputTokens     Int
+  cacheReadTokens  Int      @default(0)
+  cacheWriteTokens Int      @default(0)
+  costUsd          Float
+  createdAt        DateTime @default(now())
 
   @@index([createdAt])
+  @@index([clientId, createdAt])
   @@map("ai_usage")
 }

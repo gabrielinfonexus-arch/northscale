@@ -121,3 +121,34 @@ body {
   background: var(--border-strong);
   border-radius: 8px;
 }
+
+/* Hive-Mind answers */
+.ai-prose p {
+  margin: 0.4em 0;
+}
+.ai-prose ul {
+  list-style: disc;
+  padding-left: 1.25em;
+  margin: 0.4em 0;
+}
+.ai-prose ol {
+  list-style: decimal;
+  padding-left: 1.25em;
+  margin: 0.4em 0;
+}
+.ai-prose li {
+  margin: 0.15em 0;
+}
+.ai-prose h1,
+.ai-prose h2,
+.ai-prose h3 {
+  font-weight: 600;
+  margin: 0.8em 0 0.3em;
+  font-size: 1.02em;
+}
+.ai-prose strong {
+  font-weight: 600;
+}
+.ai-prose tr:last-child td {
+  border-bottom: 0;
+}
