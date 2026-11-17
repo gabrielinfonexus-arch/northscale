@@ -31,9 +31,25 @@ async function main() {
     m = await db.membership.findFirstOrThrow({ where: { organizationId: org.id, role: "OWNER" }, include: { user: true } });
   }
   let user = m.user;
-  if (wantedEmail && user.email !== wantedEmail && user.email === "owner@northscale.local") {
-    const taken = await db.user.findUnique({ where: { email: wantedEmail } });
-    if (!taken) user = await db.user.update({ where: { id: user.id }, data: { email: wantedEmail } });
+  // Rename the Owner to OWNER_EMAIL: always from the seeded placeholder, and also with OWNER_PASSWORD_RESET=1
+  // (fixes a first deploy where OWNER_EMAIL had a typo).
+  const reset = process.env.OWNER_PASSWORD_RESET === "1";
+  if (wantedEmail && user.email !== wantedEmail && (user.email === "owner@northscale.local" || reset)) {
+    const taken = await db.user.findUnique({ where: { email: wantedEmail }, include: { memberships: true } });
+    if (taken && reset) {
+      // that email already has an account: make it the Owner instead
+      await db.membership.upsert({
+        where: { userId_organizationId: { userId: taken.id, organizationId: org.id } },
+        update: { role: "OWNER" },
+        create: { userId: taken.id, organizationId: org.id, role: "OWNER" },
+      });
+      await db.user.update({ where: { id: taken.id }, data: { disabledAt: null } });
+      user = taken;
+      console.log(`Owner: ${wantedEmail} already existed and is now an Owner.`);
+    } else if (!taken) {
+      console.log(`Owner: email changed from ${user.email} to ${wantedEmail}.`);
+      user = await db.user.update({ where: { id: user.id }, data: { email: wantedEmail } });
+    }
   }
 
   const pw = process.env.OWNER_PASSWORD;
