@@ -12,7 +12,7 @@ import { queueMode } from "@/server/queue/enqueue";
 export const metadata: Metadata = { title: "Sync Status" };
 
 const ERRORS: Record<string, string> = {
-  meta_not_configured: "Meta isn't configured yet: set META_APP_ID and META_APP_SECRET (see README → Meta), or use a System User token.",
+  meta_not_configured: "Facebook login isn't set up yet: Connect Meta → Continue with Facebook opens the one-time setup.",
   google_not_configured:
     "Google Ads isn't configured yet: set GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID and GOOGLE_ADS_CLIENT_SECRET (see README → Google Ads).",
   shopify_oauth_not_configured:

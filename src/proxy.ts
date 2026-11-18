@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * Webhooks and the Inngest endpoint are excluded: they verify their own signatures / keys.
  */
 const SESSION_COOKIE = "ns_session";
-const PUBLIC = [/^\/login$/, /^\/forgot$/, /^\/reset\/[^/]+$/, /^\/invite\/[^/]+$/, /^\/share\/[^/]+$/];
+const PUBLIC = [/^\/login$/, /^\/privacy$/, /^\/forgot$/, /^\/reset\/[^/]+$/, /^\/invite\/[^/]+$/, /^\/share\/[^/]+$/];
 
 export function proxy(req: NextRequest) {
   const password = process.env.SITE_PASSWORD;

@@ -37,6 +37,9 @@ async function main() {
   await retryKnownFailures(db);
   run("npx prisma migrate deploy");
   const clients = await db.client.count();
+  // a real client exists: hide the demo clients once (a later manual "Demo data" choice is kept)
+  if (await db.client.count({ where: { isDemo: false } }))
+    await db.orgSetting.updateMany({ where: { demoData: true, demoAutoHidden: false }, data: { demoData: false, demoAutoHidden: true } });
   await db.$disconnect();
   if (clients === 0 && process.env.SEED_DEMO_ON_DEPLOY !== "0") {
     console.log("Empty database: seeding demo clients…");

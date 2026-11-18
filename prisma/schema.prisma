@@ -123,6 +123,12 @@ model OrgSetting {
   slackWebhookEncrypted  String?
   alertEmails            String[]     @default([])
   alertMinSeverity       String       @default("WARNING") // CRITICAL | WARNING | INFO
+  /// Meta app for "Continue with Facebook" (set in Settings → Connect Meta setup; env META_APP_* takes precedence)
+  metaAppId              String?
+  metaAppSecretEncrypted String?
+  metaLoginConfigId      String?
+  /// demo clients were hidden automatically once a real client existed (so a later manual choice is kept)
+  demoAutoHidden         Boolean      @default(false)
   plan                   String       @default("internal")
   updatedAt              DateTime     @updatedAt
   @@map("org_settings")

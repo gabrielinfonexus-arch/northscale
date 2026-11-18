@@ -5,6 +5,7 @@ import { assertCanEdit } from "@/server/auth";
 import { getConnector, hasConnector } from "@/server/connectors/registry";
 import { PLATFORM_SLUG } from "@/server/connect";
 import { normalizeShop } from "@/server/connectors/shopify/client";
+import { getMetaAppConfig, metaMockOn } from "@/server/meta-app";
 
 /** Step 1 of OAuth: send the user to the platform's consent screen. */
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/connect/[platform]/start">) {
@@ -20,8 +21,13 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/connect/[pla
   }
   const oauth = getConnector(platform).oauth;
   if (!oauth) return NextResponse.redirect(new URL(`${back}?error=no_oauth`));
-  if (platform === "META" && !process.env.META_APP_ID && process.env.META_MOCK !== "1")
-    return NextResponse.redirect(new URL(`${back}?error=meta_not_configured`));
+  let metaExtra: Record<string, string> | undefined;
+  if (platform === "META" && !metaMockOn()) {
+    const cfg = await getMetaAppConfig();
+    // not set up yet: the one-time setup page (with the values to copy into Meta) instead of an error
+    if (!cfg) return NextResponse.redirect(new URL(`/connect/meta/setup?client=${encodeURIComponent(clientId)}`, req.nextUrl.origin));
+    metaExtra = { appId: cfg.appId, ...(cfg.configId ? { configId: cfg.configId } : {}) };
+  }
   if (
     platform === "GOOGLE" &&
     !(process.env.GOOGLE_ADS_CLIENT_ID && process.env.GOOGLE_ADS_DEVELOPER_TOKEN) &&
@@ -43,7 +49,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/connect/[pla
   const redirectUri = `${process.env.APP_URL ?? req.nextUrl.origin}/api/connect/${slug}/callback`;
   let target: string;
   try {
-    target = oauth.authorizeUrl(state, redirectUri, shop ? { shop } : undefined);
+    target = oauth.authorizeUrl(state, redirectUri, shop ? { shop } : metaExtra);
   } catch (e) {
     return NextResponse.redirect(new URL(`${back}?error=${encodeURIComponent((e as Error).message)}`));
   }

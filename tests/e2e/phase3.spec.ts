@@ -52,7 +52,7 @@ test("System User token → pick account → backfill → health shows account p
   await picker.getByRole("checkbox", { name: "Mock Marca – Brasil", exact: true }).check();
   await page.getByTestId("link-accounts").click();
   await page.waitForURL(/sync-status\?client=mock-brand-sandbox&connected=1/);
-  const row = page.getByTestId("conn-act_900100400");
+  const row = page.getByTestId("conn-act_900100400").filter({ visible: true }); // the earlier Sync Status visit stays mounted (hidden)
   await expect(row.getByTestId("conn-status")).toHaveText("Error", { timeout: 150_000 });
   await expect(row).toContainText("Unsettled");
   // the data still landed, converted from BRL to the client's reporting currency (USD)

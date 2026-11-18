@@ -1,4 +1,5 @@
 import "server-only";
+import { getMetaAppConfig } from "../../meta-app";
 import type { DateRange } from "@/lib/periods";
 import { addDays } from "@/lib/periods";
 import { ConnectorError, type Connector, type ConnectorContext, type SyncResult } from "../types";
@@ -121,23 +122,25 @@ export const metaConnector: Connector = {
   platform: "META",
 
   oauth: {
-    authorizeUrl(state, redirectUri) {
+    authorizeUrl(state, redirectUri, extra) {
       if (metaMockEnabled()) return `${redirectUri}?code=mock-code&state=${encodeURIComponent(state)}`;
       const u = new URL(`https://www.facebook.com/${version()}/dialog/oauth`);
-      u.searchParams.set("client_id", process.env.META_APP_ID ?? "");
+      u.searchParams.set("client_id", extra?.appId ?? process.env.META_APP_ID ?? "");
       u.searchParams.set("redirect_uri", redirectUri);
       u.searchParams.set("state", state);
       u.searchParams.set("response_type", "code");
-      if (process.env.META_LOGIN_CONFIG_ID)
-        u.searchParams.set("config_id", process.env.META_LOGIN_CONFIG_ID); // Facebook Login for Business
+      const configId = extra?.configId ?? process.env.META_LOGIN_CONFIG_ID;
+      if (configId)
+        u.searchParams.set("config_id", configId); // Facebook Login for Business: account / page picker
       else u.searchParams.set("scope", "ads_read,business_management,leads_retrieval,pages_show_list");
       return u.toString();
     },
     async exchangeCode(code, redirectUri) {
       const mock = metaMockEnabled();
-      const appId = process.env.META_APP_ID ?? (mock ? "mock" : undefined),
-        secret = process.env.META_APP_SECRET ?? (mock ? "mock" : undefined);
-      if (!appId || !secret) throw new ConnectorError("META_APP_ID / META_APP_SECRET are not set", "invalid_request");
+      const cfg = await getMetaAppConfig();
+      const appId = cfg?.appId ?? (mock ? "mock" : undefined),
+        secret = cfg?.secret ?? (mock ? "mock" : undefined);
+      if (!appId || !secret) throw new ConnectorError("Facebook login isn't set up yet (Sync Status → Connect Meta).", "invalid_request");
       const c = makeClient({ token: "" });
       const short = await c.get<{ access_token: string }>("oauth/access_token", {
         client_id: appId,
