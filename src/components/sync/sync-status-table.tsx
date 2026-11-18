@@ -32,6 +32,18 @@ export function relTime(iso: string | null, now: number): string {
   return diff < 0 ? `${unit[0]} ${unit[1]} ago` : `in ${unit[0]} ${unit[1]}`;
 }
 
+/** Open "Continue with Facebook" in a pop-up; if pop-ups are blocked, use this tab. */
+function connectMetaPopup(clientId: string) {
+  const url = `/api/connect/meta/start?client=${encodeURIComponent(clientId)}`;
+  const w = 600,
+    h = 720;
+  const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
+  const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+  const popup = window.open(`${url}&popup=1`, "northscale-meta", `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+  if (!popup) window.location.href = url;
+  else popup.focus();
+}
+
 export function SyncStatusTable({
   rows,
   currentClient,
@@ -46,6 +58,16 @@ export function SyncStatusTable({
   const [connectOpen, setConnectOpen] = useState(false);
   const [googleOpen, setGoogleOpen] = useState(false);
   const [shopifyOpen, setShopifyOpen] = useState(false);
+  // Facebook login in a pop-up (like Zapier): when it finishes, the pop-up tells us where to go next
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin || e.data?.type !== "ns-oauth" || typeof e.data.url !== "string") return;
+      router.push(e.data.url);
+      router.refresh();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [router]);
   const [busy, setBusy] = useState<string | null>(null);
   const [, start] = useTransition();
   const running = rows.some((r) => r.status === "SYNCING" || r.lastJob?.status === "RUNNING" || r.lastJob?.status === "QUEUED");
@@ -89,7 +111,10 @@ export function SyncStatusTable({
             <Button size="sm" variant="outline" onClick={() => setGoogleOpen(true)} data-testid="connect-google">
               <Plus /> Connect Google Ads
             </Button>
-            <Button size="sm" onClick={() => setConnectOpen(true)} data-testid="connect-meta">
+            <Button size="sm" variant="ghost" onClick={() => setConnectOpen(true)} data-testid="connect-meta-token">
+              Meta token
+            </Button>
+            <Button size="sm" onClick={() => connectMetaPopup(currentClient.id)} data-testid="connect-meta">
               <Plus /> Connect Meta
             </Button>
           </div>

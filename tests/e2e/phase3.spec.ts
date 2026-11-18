@@ -39,7 +39,7 @@ test("System User token → pick account → backfill → health shows account p
   await page.goto("/sync-status?client=mock-brand-sandbox");
   await page.getByTestId("sync-status-table").waitFor();
   test.skip(!(await page.getByText("Meta mock mode is on").isVisible()), "requires META_MOCK=1");
-  await page.getByTestId("connect-meta").click();
+  await page.getByTestId("connect-meta-token").click();
   await page.getByLabel("System user token").fill("mock-system-user-token-0123456789");
   await page.getByTestId("submit-token").click();
   await page.waitForURL(/\/connect\/meta\?credential=/);
@@ -67,4 +67,16 @@ test("sync overview shows charts, rate limits and the job log", async ({ page })
   await expect(page.getByTestId("jobs-per-day").locator(".recharts-bar-rectangle").first()).toBeVisible();
   await expect(page.getByTestId("rate-limits").getByRole("progressbar").first()).toBeVisible();
   await expect(page.getByTestId("job-log").locator("tbody tr")).not.toHaveCount(0);
+});
+
+test("Connect Meta opens Facebook login in a pop-up and comes back to the account picker", async ({ page }) => {
+  await page.goto("/sync-status?client=mock-brand-sandbox");
+  await page.getByTestId("sync-status-table").waitFor();
+  test.skip(!(await page.getByText("Meta mock mode is on").isVisible()), "requires META_MOCK=1");
+  const popupPromise = page.waitForEvent("popup");
+  await page.getByTestId("connect-meta").click();
+  const popup = await popupPromise;
+  await popup.waitForEvent("close", { timeout: 30_000 }); // the pop-up closes itself after the login
+  await page.waitForURL(/\/connect\/meta\?credential=.+&client=mock-brand-sandbox/);
+  await expect(page.getByTestId("account-picker")).toContainText("Mock Brand – Prospecting");
 });

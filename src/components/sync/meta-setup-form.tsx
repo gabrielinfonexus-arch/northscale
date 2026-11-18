@@ -14,7 +14,7 @@ export function MetaSetupForm({ startHref, configured }: { startHref: string; co
     <label className="flex flex-col gap-1 text-[13px]">
       <span className="font-medium">{label}</span>
       <input
-        className={`${field} max-w-md font-mono`}
+        className={`${field} w-full font-mono`}
         type={type}
         autoComplete="off"
         value={v[k]}
@@ -34,13 +34,14 @@ export function MetaSetupForm({ startHref, configured }: { startHref: string; co
           if (!r.ok) return setMsg({ ok: false, text: r.error });
           setSaved(true);
           setV({ appId: "", secret: "", configId: "" });
-          setMsg({ ok: true, text: r.warning ?? "Saved and checked with Meta." });
+          if (!r.warning) return window.location.assign(startHref); // keys verified: go to Facebook
+          setMsg({ ok: true, text: r.warning });
         });
       }}
     >
-      {input("appId", "App ID", "App settings → Basic → App ID")}
-      {input("secret", "App secret", "App settings → Basic → App secret → Show (stored encrypted, never shown again)", "password")}
-      {input("configId", "Configuration ID", "Facebook Login for Business → Configurations (enables the account & page picker)")}
+      {input("appId", "App ID", "Meta app → App settings → Basic")}
+      {input("secret", "App secret", "Same page → App secret → Show (stored encrypted)", "password")}
+      {input("configId", "Configuration ID", "Facebook Login for Business → Configurations")}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending || !v.appId || !v.secret}>
           {pending ? "Checking with Meta…" : configured ? "Replace keys" : "Save"}

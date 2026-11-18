@@ -20,12 +20,16 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/connect/[pla
     return NextResponse.redirect(new URL(`${back}?error=forbidden`));
   }
   const oauth = getConnector(platform).oauth;
+  const popup = req.nextUrl.searchParams.get("popup") === "1";
   if (!oauth) return NextResponse.redirect(new URL(`${back}?error=no_oauth`));
   let metaExtra: Record<string, string> | undefined;
   if (platform === "META" && !metaMockOn()) {
     const cfg = await getMetaAppConfig();
     // not set up yet: the one-time setup page (with the values to copy into Meta) instead of an error
-    if (!cfg) return NextResponse.redirect(new URL(`/connect/meta/setup?client=${encodeURIComponent(clientId)}`, req.nextUrl.origin));
+    if (!cfg)
+      return NextResponse.redirect(
+        new URL(`/meta-setup?client=${encodeURIComponent(clientId)}${popup ? "&popup=1" : ""}`, req.nextUrl.origin),
+      );
     metaExtra = { appId: cfg.appId, ...(cfg.configId ? { configId: cfg.configId } : {}) };
   }
   if (
@@ -45,7 +49,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/connect/[pla
   if (platform === "SHOPIFY" && !process.env.SHOPIFY_API_KEY && process.env.SHOPIFY_MOCK !== "1")
     return NextResponse.redirect(new URL(`${back}?error=shopify_oauth_not_configured`));
   const nonce = randomBytes(16).toString("base64url");
-  const state = signState({ c: clientId, p: platform, n: nonce, ...(shop ? { s: shop } : {}) });
+  const state = signState({ c: clientId, p: platform, n: nonce, ...(shop ? { s: shop } : {}), ...(popup ? { pp: 1 } : {}) });
   const redirectUri = `${process.env.APP_URL ?? req.nextUrl.origin}/api/connect/${slug}/callback`;
   let target: string;
   try {
