@@ -78,3 +78,6 @@ export default function ConnectPage({ params, searchParams }: PageProps<"/connec
     </>
   );
 }
+
+/** Syncs started from here run after the response (or as Inngest steps): allow the platform maximum. */
+export const maxDuration = 300;

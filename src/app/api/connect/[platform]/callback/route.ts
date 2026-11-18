@@ -67,3 +67,6 @@ function validShopifyHmac(sp: URLSearchParams): boolean {
   const digest = createHmac("sha256", secret).update(msg).digest("hex");
   return digest.length === hmac.length && timingSafeEqual(Buffer.from(digest), Buffer.from(hmac));
 }
+
+/** Syncs started from here run after the response (or as Inngest steps): allow the platform maximum. */
+export const maxDuration = 300;

@@ -13,8 +13,8 @@ declare global {
  * Transaction pooler (same host, port 6543), built for many short connections. Migrations and scripts keep
  * using DATABASE_URL as given (they need a session). Set DB_TRANSACTION_POOLER=0 to opt out.
  */
-export function runtimeDatabaseUrl(url: string | undefined = process.env.DATABASE_URL): string {
-  if (!url) throw new Error("DATABASE_URL is not set");
+export function runtimeDatabaseUrl(url: string | undefined = process.env.DATABASE_URL): string | undefined {
+  if (!url) return url; // fails on the first query, not at import (unit tests import modules without a database)
   if (process.env.DB_TRANSACTION_POOLER === "0") return url;
   return url.replace(/(@[^/:]+\.pooler\.supabase\.com):5432(\/|$|\?)/, "$1:6543$2");
 }

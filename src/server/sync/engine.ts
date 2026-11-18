@@ -27,6 +27,21 @@ export interface SyncRequest {
 
 export const BACKFILL_DAYS = 395;
 const CHUNK_DAYS = 31;
+/**
+ * Serverless functions are cut off after a few minutes (Vercel: maxDuration 300 s). A backfill stops after this
+ * budget, keeps its place (meta.backfillResumeTo) and continues in a new run — automatically with Inngest, or
+ * the next time Sync Status is opened (resumePausedBackfills).
+ */
+/** Refresh cached pages for a client (no-op outside the Next.js server, e.g. CLI scripts). */
+function invalidateClient(clientId: string) {
+  try {
+    revalidateTag(`client:${clientId}`, "max");
+  } catch {
+    /* not running inside Next.js */
+  }
+}
+
+const TIME_BUDGET_MS = Number(process.env.SYNC_TIME_BUDGET_MS ?? 230_000);
 
 const JOB_KIND = { BACKFILL: "BACKFILL", INCREMENTAL: "INCREMENTAL", DAILY: "RESYNC_RANGE", RESYNC_RANGE: "RESYNC_RANGE" } as const;
 
@@ -80,7 +95,13 @@ export async function runSync(
   const finish = async (
     status: "SUCCESS" | "FAILED",
     rows: number,
-    extra: { error?: string; usage?: number; connStatus?: "OK" | "ERROR" | "TOKEN_EXPIRED"; meta?: Record<string, unknown> } = {},
+    extra: {
+      error?: string;
+      usage?: number;
+      connStatus?: "OK" | "ERROR" | "TOKEN_EXPIRED";
+      meta?: Record<string, unknown>;
+      paused?: boolean;
+    } = {},
   ) => {
     const now = new Date();
     await prisma.syncJob.update({
@@ -102,7 +123,7 @@ export async function runSync(
         ...(status === "SUCCESS" ? { lastSuccessAt: now } : {}),
         nextSyncAt: new Date(Math.ceil(now.getTime() / 3_600_000) * 3_600_000),
         ...(extra.meta ? { meta: { ...((conn.meta as Record<string, unknown>) ?? {}), ...extra.meta } as never } : {}),
-        ...(req.kind === "BACKFILL" && status === "SUCCESS" ? { backfillProgress: 1 } : {}),
+        ...(req.kind === "BACKFILL" && status === "SUCCESS" && !extra.paused ? { backfillProgress: 1 } : {}),
       },
     });
     // Watchdog runs on every sync (success or failure); it never throws.
@@ -136,7 +157,12 @@ export async function runSync(
     new Intl.DateTimeFormat("en-US", { timeZone: conn.timezone, hour: "numeric", hourCycle: "h23" }).format(new Date()),
   );
   const range = plannedRange(req.kind, today, hourLocal, req);
-  const chunks = chunkRange(range, CHUNK_DAYS);
+  const allChunks = chunkRange(range, CHUNK_DAYS);
+  const baseMeta = (conn.meta as Record<string, unknown>) ?? {};
+  const resumeTo = req.kind === "BACKFILL" && typeof baseMeta.backfillResumeTo === "string" ? baseMeta.backfillResumeTo : null;
+  // resuming a paused backfill: skip the chunks already done (chunks are newest first)
+  const chunks = resumeTo ? allChunks.filter((c) => c.to <= resumeTo) : allChunks;
+  const doneBefore = allChunks.length - chunks.length;
   await prisma.syncJob.update({
     where: { id: jobId },
     data: { rangeFrom: new Date(range.from + "T00:00:00Z"), rangeTo: new Date(range.to + "T00:00:00Z") },
@@ -152,27 +178,56 @@ export async function runSync(
       rows += r1.rows + r2.rows;
       warnings.push(...r1.warnings, ...r2.warnings);
       metaPatch = { ...metaPatch, ...r1.metaPatch, ...r2.metaPatch };
-      const progress = (i + 1) / chunks.length;
+      const progress = (doneBefore + i + 1) / allChunks.length;
       await prisma.syncJob.update({ where: { id: jobId }, data: { progress, rowsWritten: rows, rateLimitPct: usage || null } });
-      if (req.kind === "BACKFILL") await prisma.connection.update({ where: { id: conn.id }, data: { backfillProgress: progress } });
+      if (req.kind === "BACKFILL") {
+        const next = chunks[i + 1];
+        // keep our place after every chunk, so even a hard timeout resumes here
+        await prisma.connection.update({
+          where: { id: conn.id },
+          data: { backfillProgress: progress, meta: { ...baseMeta, ...metaPatch, backfillResumeTo: next ? next.to : null } as never },
+        });
+        // the most recent month first: make it visible right away
+        if (i === 0 && doneBefore === 0) {
+          await refreshReportingViews();
+          invalidateClient(conn.clientId);
+        }
+        if (next && Date.now() - started.getTime() > TIME_BUDGET_MS) {
+          await refreshReportingViews();
+          invalidateClient(conn.clientId);
+          const result = await finish("SUCCESS", rows, {
+            usage,
+            error: `Backfill ${Math.round(progress * 100)}% done (through ${next.to}); it continues automatically.`,
+            meta: { ...metaPatch, backfillResumeTo: next.to },
+            paused: true,
+          });
+          await continueBackfill(conn.id, conn.platform);
+          return result;
+        }
+      }
     }
     if (req.kind !== "INCREMENTAL" && connector.syncCreatives) rows += (await connector.syncCreatives(ctx)).rows;
     const health = await connector.healthCheck(ctx);
     await refreshReportingViews();
-    revalidateTag(`client:${conn.clientId}`, "max");
+    invalidateClient(conn.clientId);
     const uniqueWarnings = [...new Set(warnings)];
     return finish("SUCCESS", rows, {
       usage,
       connStatus: health.status,
       error: health.status !== "OK" ? health.message : uniqueWarnings.length ? `Warnings: ${uniqueWarnings.join(" ")}` : undefined,
-      meta: { ...metaPatch, ...(health.account ? { account: health.account } : {}), warnings: uniqueWarnings },
+      meta: {
+        ...metaPatch,
+        ...(health.account ? { account: health.account } : {}),
+        warnings: uniqueWarnings,
+        ...(req.kind === "BACKFILL" ? { backfillResumeTo: null } : {}),
+      },
     });
   } catch (e) {
     const err = e instanceof ConnectorError ? e : new ConnectorError((e as Error).message ?? String(e), "transient");
     // keep whatever was written so far visible
     if (rows > 0) {
       await refreshReportingViews().catch(() => {});
-      revalidateTag(`client:${conn.clientId}`, "max");
+      invalidateClient(conn.clientId);
     }
     const result = await finish("FAILED", rows, {
       usage,
@@ -181,6 +236,50 @@ export async function runSync(
     });
     if (opts.throwRetryable && (err.kind === "rate_limit" || err.kind === "transient")) throw err;
     return result;
+  }
+}
+
+/** Queue the next part of a paused backfill (with Inngest it runs right away; inline it runs on the next trigger). */
+async function continueBackfill(connectionId: string, platform: string) {
+  try {
+    const { enqueueSync, queueMode } = await import("../queue/enqueue");
+    if (queueMode() === "inngest") await enqueueSync({ connectionId, platform, kind: "BACKFILL" });
+  } catch (e) {
+    // the saved place is kept: Sync Status (or the next scheduled run) resumes it
+    console.warn(`[sync] could not queue the next backfill part for ${connectionId}: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Inline mode (no Inngest): continue backfills that paused or were cut off by the platform's time limit.
+ * Called when Sync Status / Sync Overview are opened.
+ */
+export async function resumePausedBackfills(clientIds: string[]) {
+  const stale = new Date(Date.now() - 6 * 60_000);
+  const conns = await prisma.connection.findMany({
+    where: { clientId: { in: clientIds }, isDemo: false, status: { notIn: ["TOKEN_EXPIRED", "DISCONNECTED"] } },
+    select: {
+      id: true,
+      platform: true,
+      status: true,
+      lastSyncAt: true,
+      meta: true,
+      jobs: { where: { status: { in: ["QUEUED", "RUNNING"] } }, select: { id: true, startedAt: true, createdAt: true } },
+    },
+  });
+  const { enqueueSync } = await import("../queue/enqueue");
+  for (const c of conns) {
+    const resumeTo = (c.meta as Record<string, unknown> | null)?.backfillResumeTo;
+    if (typeof resumeTo !== "string" || !hasConnector(c.platform)) continue;
+    const active = c.jobs.filter((j) => (j.startedAt ?? j.createdAt) > stale);
+    if (active.length) continue; // still running
+    // jobs cut off by a timeout never finished: close them
+    if (c.jobs.length)
+      await prisma.syncJob.updateMany({
+        where: { id: { in: c.jobs.map((j) => j.id) } },
+        data: { status: "FAILED", finishedAt: new Date(), error: "Stopped by the server time limit; resumed." },
+      });
+    await enqueueSync({ connectionId: c.id, platform: c.platform, kind: "BACKFILL" });
   }
 }
 

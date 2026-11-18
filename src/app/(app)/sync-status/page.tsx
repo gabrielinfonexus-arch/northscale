@@ -6,6 +6,7 @@ import { SyncStatusTable } from "@/components/sync/sync-status-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getPageContext } from "@/server/page-context";
 import { getConnectionStatuses, snapshotTime } from "@/server/sync-status";
+import { resumePausedBackfills } from "@/server/sync/engine";
 import { queueMode } from "@/server/queue/enqueue";
 
 export const metadata: Metadata = { title: "Sync Status" };
@@ -23,6 +24,8 @@ const ERRORS: Record<string, string> = {
 
 async function Content({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const ctx = await getPageContext(searchParams, "sync-status");
+  // without a job queue, backfills paused by the server time limit continue when this page is opened
+  if (ctx.user.role !== "CLIENT_VIEWER") await resumePausedBackfills(ctx.clients.map((c) => c.id));
   const rows = await getConnectionStatuses();
   const now = snapshotTime();
   const error = typeof ctx.sp.error === "string" ? (ERRORS[ctx.sp.error] ?? ctx.sp.error) : null;
@@ -77,3 +80,6 @@ export default function SyncStatusPage({ searchParams }: PageProps<"/sync-status
     </>
   );
 }
+
+/** Syncs started from here run after the response (or as Inngest steps): allow the platform maximum. */
+export const maxDuration = 300;
